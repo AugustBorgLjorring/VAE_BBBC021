@@ -1,4 +1,3 @@
-
 # Variational Autoencoder (VAE) on BBBC021 Dataset
 
 This repository contains an implementation of a **Variational Autoencoder (VAE)** applied to the **BBBC021** dataset. The dataset consists of fluorescence microscopy images of human cells treated with various drugs, making it a valuable resource for studying biological variability and deep generative modeling.
@@ -82,9 +81,9 @@ This process transforms high-dimensional, heterogeneous raw images into a standa
 
 A Variational Autoencoder (VAE) is a type of generative model that learns latent representations of high-dimensional data. The **VAE loss function** consists of two terms:
 
-```math
-\mathcal{L}_{\text{VAE}} = \mathbb{E}_{q(z|x)}[\log p(x|z)] - D_{KL}(q(z|x) \| p(z))
-```
+<div align="center">
+  <img src="https://latex.codecogs.com/svg.image?\color{White}\mathcal{L}=\mathbb{E}_{q(z|x)}[\log&space;p(x|z)]-D_{KL}(q(z|x)\|p(z))" alt="VAE Loss Function">
+</div>
 
 where:
 - **$q(z|x)$** is the approximate posterior distribution.
