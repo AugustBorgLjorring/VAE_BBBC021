@@ -82,14 +82,14 @@ This process transforms high-dimensional, heterogeneous raw images into a standa
 
 A Variational Autoencoder (VAE) is a type of generative model that learns latent representations of high-dimensional data. The **VAE loss function** consists of two terms:
 
-$$
-\mathcal{L} = \mathbb{E}_{q(z|x)}[\log p(x|z)] - D_{KL}(q(z|x) || p(z))
-$$
+```math
+\mathcal{L}_{\text{VAE}} = \mathbb{E}_{q(z|x)}[\log p(x|z)] - D_{KL}(q(z|x) \| p(z))
+```
 
 where:
-- **\(q(z|x)\)** is the approximate posterior distribution.
-- **\(p(x|z)\)** is the likelihood of reconstructing input data.
-- **\(D_{KL}\)** is the Kullback-Leibler divergence ensuring a well-structured latent space.
+- **$q(z|x)$** is the approximate posterior distribution.
+- **$p(x|z)$** is the likelihood of reconstructing input data.
+- **$D_{KL}$** is the Kullback-Leibler divergence ensuring a well-structured latent space.
 
 By minimizing this loss, VAEs can generate realistic biological images while learning meaningful representations.
 
@@ -140,4 +140,3 @@ The **BBBC021 dataset** presents a rich yet challenging resource for **Variation
 📍 From **Technical University of Denmark (DTU)**  
 
 🔗 GitHub Repository: [VAE_BBBC021](https://github.com/AugustBorgLjorring/VAE_BBBC021)
-```
