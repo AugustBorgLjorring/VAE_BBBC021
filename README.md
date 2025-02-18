@@ -82,7 +82,7 @@ This process transforms high-dimensional, heterogeneous raw images into a standa
 A Variational Autoencoder (VAE) is a type of generative model that learns latent representations of high-dimensional data. The **VAE loss function** consists of two terms:
 
 <div align="center">
-  <img src="https://latex.codecogs.com/svg.image?\color{White}\mathcal{L}=\mathbb{E}_{q(z|x)}[\log&space;p(x|z)]-D_{KL}(q(z|x)\|p(z))" alt="VAE Loss Function">
+  <img src="https://latex.codecogs.com/svg.image?\bg{white}\mathcal{L}=\mathbb{E}_{q(z|x)}[\log&space;p(x|z)]-D_{KL}(q(z|x)\|p(z))" alt="VAE Loss Function">
 </div>
 
 where:
