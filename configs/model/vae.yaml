@@ -2,5 +2,4 @@ model:
   name: VAE
   input_channels: 1
   latent_dim: 10
-  beta: 10
   hidden_dim: 256
