@@ -1,0 +1,27 @@
+# 🗃️ Data
+data/raw/
+data/processed/
+
+# 🔍 Experiment Outputs
+experiments/logs/
+experiments/models/
+experiments/results/
+wandb/
+
+# ⚙️ Configuration and Credentials
+*.env                # Environment variables (e.g., API keys)
+config/.hydra/       # Hydra outputs
+**/__pycache__/      # Python cache files
+
+# 🧪 Jupyter Notebooks
+.ipynb_checkpoints/
+
+# 🧱 Build and OS Files
+.DS_Store
+.vscode/
+*.log
+
+# 💾 Python
+*.pyc
+*.pyo
+*.pyd

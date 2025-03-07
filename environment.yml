@@ -1,0 +1,23 @@
+name: VAE
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.12
+  - pip
+  - numpy
+  - pandas
+  - matplotlib
+  - scikit-learn
+  - scipy
+  - jupyterlab
+  - ipykernel
+  - pillow
+  - pip:
+      - torch==2.6.0+cu126
+      - torchvision==0.21.0+cu126
+      - torchaudio==2.6.0+cu126
+      - hydra-core
+      - wandb
+      - albumentations
+      - opencv-python
