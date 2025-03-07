@@ -1,0 +1,9 @@
+defaults:
+  - model: vae
+
+# General project settings
+project:
+  name: VAE_BBBC021
+
+# Model configuration
+model: ${model}
