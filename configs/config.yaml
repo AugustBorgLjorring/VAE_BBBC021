@@ -1,7 +1,8 @@
 defaults:
   - model: vae
+  - data: bbbc021
+  - train: default
 
-# General project settings
 project:
   name: VAE_BBBC021
 

@@ -1,0 +1,3 @@
+data:
+  train_path: "data/raw/train"
+  crop_pixels: 2
