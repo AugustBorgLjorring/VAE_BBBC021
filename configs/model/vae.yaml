@@ -1,5 +1,4 @@
-model:
-  name: VAE
-  input_channels: 1
-  latent_dim: 10
-  hidden_dim: 256
+name: VAE
+input_channels: 3
+latent_dim: 400
+hidden_dim: 256
