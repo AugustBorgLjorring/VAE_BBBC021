@@ -19,7 +19,7 @@ from data_processing import load_data
 
 # Standard VAE loss function
 def loss_function(recon_x, x, mu, logvar):
-    recon_loss = F.mse_loss(recon_x, x, reduction='mean') * x.size(0)
+    recon_loss = nn.functional.mse_loss(recon_x, x, reduction='sum')
     kld_loss = -0.5 * torch.sum(1 + logvar - mu.pow(2) - torch.exp(logvar))
     return recon_loss + kld_loss, recon_loss, kld_loss
 
