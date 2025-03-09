@@ -1,0 +1,4 @@
+name: VAE
+input_channels: 3
+latent_dim: 400
+hidden_dim: 256

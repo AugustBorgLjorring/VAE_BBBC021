@@ -1,0 +1,11 @@
+defaults:
+  - _self_
+  - model: vae
+  - data: bbbc021
+  - train: default
+
+project:
+  name: VAE_BBBC021
+
+# Model configuration
+model: ${model}

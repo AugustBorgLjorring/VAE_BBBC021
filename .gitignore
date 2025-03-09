@@ -6,6 +6,7 @@ data/processed/
 experiments/logs/
 experiments/models/
 experiments/results/
+outputs/
 wandb/
 
 # ⚙️ Configuration and Credentials
