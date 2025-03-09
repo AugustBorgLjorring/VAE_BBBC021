@@ -1,13 +1,10 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from omegaconf import DictConfig
-import hydra
 
 class VAE(nn.Module):
-    def __init__(self, input_channels=1, latent_dim=10, beta=10, hidden_dim=256):
+    def __init__(self, input_channels=3, latent_dim=10, hidden_dim=256):
         super(VAE, self).__init__()
-        self.beta = beta
 
         # Encoder
         self.encoder = nn.Sequential(
