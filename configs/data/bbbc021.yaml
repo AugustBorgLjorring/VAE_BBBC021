@@ -1,2 +1,2 @@
-train_path: "D:/BBBC021/BBBC021_dataset.h5"
+train_path: "data/raw/BBBC021_dataset.h5"
 crop_pixels: 2

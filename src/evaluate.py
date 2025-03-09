@@ -4,8 +4,8 @@ import matplotlib.pyplot as plt
 from omegaconf import DictConfig, OmegaConf
 import hydra
 
-from src.vae_model import VAE
-from src.data_processing import load_data
+from vae_model import VAE
+from data_processing import load_data
 
 # Avoid OMP error on Windows
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
@@ -46,18 +46,20 @@ def evaluate_model(cfg: DictConfig):
     for i in range(num_images):
         # Original images
         plt.subplot(2, num_images, i + 1)
-        plt.imshow(images[i], cmap="gray")
+        plt.imshow(images[i])
         plt.axis("off")
         plt.title("Original")
 
         # Reconstructed images
         plt.subplot(2, num_images, i + 1 + num_images)
-        plt.imshow(reconstructions[i], cmap="gray")
+        plt.imshow(reconstructions[i])
         plt.axis("off")
         plt.title("Reconstructed")
 
     plt.tight_layout()
-    plt.show()
+    # plt.show()
+    # Save the plot in experiments/results
+    plt.savefig("experiments/results/reconstructions.png")
 
 if __name__ == "__main__":
     evaluate_model()
