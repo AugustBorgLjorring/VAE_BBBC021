@@ -13,8 +13,27 @@ from omegaconf import DictConfig, OmegaConf
 import hydra
 import wandb
 
-from vae_model import VAE
+from vae_model import VAE, BetaVAE
 from data_processing import load_data
+
+# Initialize model based on config
+def initialize_model(cfg, device):
+    if cfg.model.type == "vae":
+        model = VAE(
+            input_channels=cfg.model.input_channels,
+            latent_dim=cfg.model.latent_dim,
+            hidden_dim=cfg.model.hidden_dim
+        ).to(device)
+    elif cfg.model.type == "beta_vae":
+        model = BetaVAE(
+            input_channels=cfg.model.input_channels,
+            latent_dim=cfg.model.latent_dim,
+            hidden_dim=cfg.model.hidden_dim,
+            beta=cfg.model.beta
+        ).to(device)
+    else:
+        raise ValueError(f"Model type {cfg.model.type} not recognized")
+    return model
 
 
 @hydra.main(version_base=None, config_path="../configs", config_name="config")
@@ -34,11 +53,7 @@ def train_model(cfg: DictConfig):
     train_loader = load_data(cfg)
 
     # Initialize model and move to device
-    model = VAE(
-        input_channels=cfg.model.input_channels,
-        latent_dim=cfg.model.latent_dim
-    ).to(device)
-    print(model)
+    model = initialize_model(cfg, device)   
 
     optimizer = optim.Adam(model.parameters(), lr=cfg.train.learning_rate)
 

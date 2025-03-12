@@ -1,0 +1,4 @@
+name: Beta_VAE
+input_channels: 3
+latent_dim: 500
+beta: 4.0

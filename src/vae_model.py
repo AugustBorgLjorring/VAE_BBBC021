@@ -79,3 +79,18 @@ class VAE(nn.Module):
 
     def generate(self, x):
         return self.forward(x)[0]
+    
+
+class BetaVAE(VAE):
+    def __init__(self, input_channels=3, latent_dim=10, beta=4.0):
+        super(BetaVAE, self).__init__(input_channels, latent_dim)
+        self.beta = beta  # Beta weight for KL divergence
+
+    # Override the loss function
+    def loss_function(self, recon_x, x, mu, log_var):
+        recon_loss = F.mse_loss(recon_x, x, reduction='sum')
+        kld_loss = -0.5 * torch.sum(1 + log_var - mu.pow(2) - log_var.exp())
+
+        # Apply Beta weight to KL divergence
+        loss = recon_loss + self.beta * kld_loss
+        return loss, recon_loss, kld_loss
