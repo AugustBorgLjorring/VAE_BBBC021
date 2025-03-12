@@ -26,3 +26,8 @@ config/.hydra/       # Hydra outputs
 *.pyc
 *.pyo
 *.pyd
+
+# HPC output
+*.out
+*.err
+*.sh

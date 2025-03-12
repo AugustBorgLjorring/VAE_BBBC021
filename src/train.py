@@ -17,13 +17,6 @@ from vae_model import VAE
 from data_processing import load_data
 
 
-# Standard VAE loss function
-def loss_function(recon_x, x, mu, logvar):
-    recon_loss = nn.functional.mse_loss(recon_x, x, reduction='sum')
-    kld_loss = -0.5 * torch.sum(1 + logvar - mu.pow(2) - torch.exp(logvar))
-    return recon_loss + kld_loss, recon_loss, kld_loss
-
-
 @hydra.main(version_base=None, config_path="../configs", config_name="config")
 def train_model(cfg: DictConfig):
     print(OmegaConf.to_yaml(cfg))
@@ -43,30 +36,30 @@ def train_model(cfg: DictConfig):
     # Initialize model and move to device
     model = VAE(
         input_channels=cfg.model.input_channels,
-        latent_dim=cfg.model.latent_dim,
-        hidden_dim=cfg.model.hidden_dim
+        latent_dim=cfg.model.latent_dim
     ).to(device)
+    print(model)
 
     optimizer = optim.Adam(model.parameters(), lr=cfg.train.learning_rate)
 
-    # Training loop
+    # Training loop (no AMP)
     model.train()
     for epoch in range(cfg.train.epochs):
-        train_loss = 0
+        train_loss = 0.0
+
         for x_batch, _ in tqdm(train_loader, desc=f"Epoch {epoch + 1}/{cfg.train.epochs}", leave=False):
-            
-            # Move batch to the same device as the model
             x_batch = x_batch.to(device)
-            
+
             optimizer.zero_grad()
             recon_batch, mu, logvar = model(x_batch)
-            loss, recon_loss, kld_loss = loss_function(recon_batch, x_batch, mu, logvar)
-            
+            loss, recon_loss, kld_loss = model.loss_function(recon_batch, x_batch, mu, logvar)
+
             loss.backward()
-            train_loss += loss.item()
             optimizer.step()
 
-            # Log batch-wise metrics
+            train_loss += loss.item()
+
+            # Log batch-wise metrics to W&B
             wandb.log({
                 "epoch": epoch + 1,
                 "batch_loss": loss.item(),
@@ -74,26 +67,19 @@ def train_model(cfg: DictConfig):
                 "kl_divergence": kld_loss.item()
             })
 
-        # Logging epoch-wise metrics
+        # Compute average epoch loss
         avg_loss = train_loss / len(train_loader.dataset)
         print(f"Epoch [{epoch + 1}/{cfg.train.epochs}], Loss: {avg_loss:.4f}")
         wandb.log({"epoch": epoch + 1, "epoch_loss": avg_loss})
 
-    # Save model checkpoint with time in name of model
     model_save_path = f"experiments/models/vae_model_{int(time.time())}.pth"
     os.makedirs(os.path.dirname(model_save_path), exist_ok=True)
     torch.save(model.state_dict(), model_save_path)
 
-    # Check size is not too large for wandb 1 GB limit
-    if os.path.getsize(model_save_path) < 1e9:
-        # Log model as an artifact in wandb
-        artifact = wandb.Artifact('vae_model', type='model')
-        artifact.add_file(model_save_path)
-        wandb.log_artifact(artifact)
-    else:
-        print(f"Model file size is too large for wandb: {os.path.getsize(model_save_path)} bytes")
+    artifact = wandb.Artifact('vae_model', type='model')
+    artifact.add_file(model_save_path)
+    wandb.log_artifact(artifact)
 
-    # Properly finish the wandb run
     wandb.finish()
 
 if __name__ == "__main__":

@@ -17,8 +17,7 @@ def evaluate_model(cfg: DictConfig):
     # Load the trained model
     model = VAE(
         input_channels=cfg.model.input_channels,
-        latent_dim=cfg.model.latent_dim,
-        hidden_dim=cfg.model.hidden_dim
+        latent_dim=cfg.model.latent_dim
     )
     
     model_path = "experiments/models/vae_model.pth"
