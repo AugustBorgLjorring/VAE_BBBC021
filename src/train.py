@@ -18,21 +18,19 @@ from data_processing import load_data
 
 # Initialize model based on config
 def initialize_model(cfg, device):
-    if cfg.model.type == "vae":
+    if cfg.model.name == "VAE":
         model = VAE(
             input_channels=cfg.model.input_channels,
-            latent_dim=cfg.model.latent_dim,
-            hidden_dim=cfg.model.hidden_dim
+            latent_dim=cfg.model.latent_dim
         ).to(device)
-    elif cfg.model.type == "beta_vae":
+    elif cfg.model.name == "Beta_VAE":
         model = BetaVAE(
             input_channels=cfg.model.input_channels,
             latent_dim=cfg.model.latent_dim,
-            hidden_dim=cfg.model.hidden_dim,
             beta=cfg.model.beta
         ).to(device)
     else:
-        raise ValueError(f"Model type {cfg.model.type} not recognized")
+        raise ValueError(f"Model type {cfg.model.name} not recognized")
     return model
 
 
