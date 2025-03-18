@@ -1,2 +1,5 @@
 train_path: "data/raw/BBBC021_dataset.h5"
 crop_pixels: 2
+train_ratio: 0.8
+val_ratio: 0.1
+test_ratio: 0.1
