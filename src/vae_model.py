@@ -8,16 +8,12 @@ class VAE(nn.Module):
 
         self.encoder = nn.Sequential(
             nn.Conv2d(input_channels, 32, kernel_size=4, stride=2, padding=1),
-            nn.BatchNorm2d(32),
             nn.LeakyReLU(0.2),
             nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=1),
-            nn.BatchNorm2d(64),
             nn.LeakyReLU(0.2),
             nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1),
-            nn.BatchNorm2d(128),
             nn.LeakyReLU(0.2),
             nn.Conv2d(128, 256, kernel_size=4, stride=2, padding=1),
-            nn.BatchNorm2d(256),
             nn.LeakyReLU(0.2)
         )
 
@@ -27,16 +23,12 @@ class VAE(nn.Module):
 
         self.decoder = nn.Sequential(
             nn.ConvTranspose2d(256, 128, kernel_size=4, stride=2, padding=1),
-            nn.BatchNorm2d(128),
             nn.LeakyReLU(0.2),
             nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1),
-            nn.BatchNorm2d(64),
             nn.LeakyReLU(0.2),
             nn.ConvTranspose2d(64, 32, kernel_size=4, stride=2, padding=1),
-            nn.BatchNorm2d(32),
             nn.LeakyReLU(0.2),
             nn.ConvTranspose2d(32, 32, kernel_size=4, stride=2, padding=1),
-            nn.BatchNorm2d(32),
             nn.LeakyReLU(0.2),
             nn.Conv2d(32, input_channels, kernel_size=3, padding=1),
             nn.Sigmoid()
@@ -79,7 +71,6 @@ class VAE(nn.Module):
 
     def generate(self, x):
         return self.forward(x)[0]
-    
 
 class BetaVAE(VAE):
     def __init__(self, input_channels=3, latent_dim=10, beta=4.0):
