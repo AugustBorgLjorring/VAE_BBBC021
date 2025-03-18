@@ -1,14 +1,10 @@
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
-from torch.utils.data import Subset
 
 import numpy as np
-from tqdm import tqdm
 import os
 import time
-
+from tqdm import tqdm
 from omegaconf import DictConfig, OmegaConf
 import hydra
 import wandb
@@ -33,10 +29,13 @@ def initialize_model(cfg, device):
         raise ValueError(f"Model type {cfg.model.name} not recognized")
     return model
 
-
 @hydra.main(version_base=None, config_path="../configs", config_name="config")
 def train_model(cfg: DictConfig):
     print(OmegaConf.to_yaml(cfg))
+
+    # Set seed for reproducibility
+    torch.manual_seed(0)
+    np.random.seed(0)
 
     # Initialize Weights & Biases (wandb)
     wandb.init(project=cfg.project.name, config=OmegaConf.to_container(cfg, resolve=True))
@@ -48,14 +47,16 @@ def train_model(cfg: DictConfig):
         print(f"GPU: {torch.cuda.get_device_name(0)}")
 
     # Load data using the HDF5 data loader
-    train_loader = load_data(cfg)
+    train_loader = load_data(cfg, split="train")
+    val_loader = load_data(cfg, split="val")
 
     # Initialize model and move to device
     model = initialize_model(cfg, device)   
+    print(model)
 
     optimizer = optim.Adam(model.parameters(), lr=cfg.train.learning_rate)
 
-    # Training loop (no AMP)
+    # Training loop
     model.train()
     for epoch in range(cfg.train.epochs):
         train_loss = 0.0
@@ -79,16 +80,29 @@ def train_model(cfg: DictConfig):
                 "reconstruction_loss": recon_loss.item(),
                 "kl_divergence": kld_loss.item()
             })
-
+        
+        # Validate model on validation set
+        model.eval()
+        val_loss = 0.0
+        with torch.no_grad():
+            for x_batch, _ in val_loader:
+                x_batch = x_batch.to(device)
+                recon_batch, mu, logvar = model(x_batch)
+                loss, _, _ = model.loss_function(recon_batch, x_batch, mu, logvar)
+                val_loss += loss.item()
+                
         # Compute average epoch loss
+        avg_val_loss = val_loss / len(val_loader.dataset)
         avg_loss = train_loss / len(train_loader.dataset)
-        print(f"Epoch [{epoch + 1}/{cfg.train.epochs}], Loss: {avg_loss:.4f}")
-        wandb.log({"epoch": epoch + 1, "epoch_loss": avg_loss})
-
+        print(f"Epoch [{epoch + 1}/{cfg.train.epochs}], Train Loss: {avg_loss:.4f}, Val Loss: {avg_val_loss:.4f}")
+        wandb.log({"epoch": epoch + 1, "epoch_loss": avg_loss, "val_loss": avg_val_loss})
+        
+    # Save trained model
     model_save_path = f"experiments/models/vae_model_{int(time.time())}.pth"
     os.makedirs(os.path.dirname(model_save_path), exist_ok=True)
     torch.save(model.state_dict(), model_save_path)
 
+    # Upload model to W&B
     artifact = wandb.Artifact('vae_model', type='model')
     artifact.add_file(model_save_path)
     wandb.log_artifact(artifact)
