@@ -97,9 +97,6 @@ def load_data(cfg: DictConfig, split: str = 'train', seed: int = 42) -> DataLoad
     
     torch.manual_seed(seed)  # Set seed for reproducibility
 
-    if split not in ["train", "val", "test"]:
-        raise ValueError(f"Invalid dataset split '{split}'. Choose from ['train', 'val', 'test'].")
-
     # Load the full dataset
     dataset = BBBC021Dataset(h5_file=cfg.data.train_path, pix=cfg.data.crop_pixels)
 
