@@ -76,9 +76,9 @@ def train_model(cfg: DictConfig):
             # Log batch-wise metrics to W&B
             wandb.log({
                 "epoch": epoch + 1,
-                "batch_loss": loss.item(),
-                "reconstruction_loss": recon_loss.item(),
-                "kl_divergence": kld_loss.item()
+                "batch_loss": loss.item() / len(x_batch),
+                "reconstruction_loss": recon_loss.item() / len(x_batch),
+                "kl_divergence": kld_loss.item() / len(x_batch)
             })
         
         # Validate model on validation set
@@ -91,19 +91,31 @@ def train_model(cfg: DictConfig):
                 loss, _, _ = model.loss_function(recon_batch, x_batch, mu, logvar)
                 val_loss += loss.item()
                 
-        # Compute average epoch loss
+        # Compute average losses
+        avg_train_loss = train_loss / len(train_loader.dataset)
         avg_val_loss = val_loss / len(val_loader.dataset)
-        avg_loss = train_loss / len(train_loader.dataset)
-        print(f"Epoch [{epoch + 1}/{cfg.train.epochs}], Train Loss: {avg_loss:.4f}, Val Loss: {avg_val_loss:.4f}")
-        wandb.log({"epoch": epoch + 1, "epoch_loss": avg_loss, "val_loss": avg_val_loss})
+        print(f"Epoch [{epoch + 1}/{cfg.train.epochs}], Train Loss: {avg_train_loss:.4f}, Val Loss: {avg_val_loss:.4f}")
+        wandb.log({"epoch": epoch + 1, "epoch_train_loss": avg_train_loss, "epoch_val_loss": avg_val_loss})
         
-    # Save trained model
-    model_save_path = f"experiments/models/vae_model_{int(time.time())}.pth"
-    os.makedirs(os.path.dirname(model_save_path), exist_ok=True)
-    torch.save(model.state_dict(), model_save_path)
+        # Switch back to training mode for next epoch
+        model.train()
 
-    # Upload model to W&B
-    artifact = wandb.Artifact('vae_model', type='model')
+    # Create a checkpoint
+    checkpoint = {
+        'epoch': epoch + 1,
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        'train_loss': avg_train_loss,
+        'val_loss': avg_val_loss,
+        'config': OmegaConf.to_container(cfg, resolve=True)
+    }
+    
+    model_save_path = f"experiments/models/vae_checkpoint_{int(time.time())}.pth"
+    os.makedirs(os.path.dirname(model_save_path), exist_ok=True)
+    torch.save(checkpoint, model_save_path)
+    
+    # Upload checkpoint to W&B
+    artifact = wandb.Artifact('vae_checkpoint', type='model')
     artifact.add_file(model_save_path)
     wandb.log_artifact(artifact)
 
