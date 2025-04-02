@@ -1,0 +1,7 @@
+name: "VAE+"
+input_channels: 3
+latent_dim: 500
+gan_weight: 0.1
+feature_weight: 0.1
+adv_schedule_slope: 250
+beta: 1.0

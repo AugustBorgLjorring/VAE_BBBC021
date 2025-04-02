@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from omegaconf import DictConfig, OmegaConf
 import hydra
 
-from vae_model import VAE
+from vae_model import VAE, VAEPlus
 from data_processing import load_data
 
 # Avoid OMP error on Windows
@@ -15,12 +15,15 @@ def evaluate_model(cfg: DictConfig):
     print(OmegaConf.to_yaml(cfg))
 
     # Load the trained model
-    model = VAE(
-        input_channels=cfg.model.input_channels,
-        latent_dim=cfg.model.latent_dim
+    model = VAEPlus(
+            input_channels=cfg.model.input_channels,
+            latent_dim=cfg.model.latent_dim,
+            beta=cfg.model.beta,
+            feature_weight=cfg.model.feature_weight,
+            slope=cfg.model.adv_schedule_slope
     )
     
-    model_path = "experiments/models/vae_model.pth"
+    model_path = "experiments/models/vae_model_1743586908.pth"
     model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
     model.eval()
 
@@ -58,7 +61,7 @@ def evaluate_model(cfg: DictConfig):
     plt.tight_layout()
     # plt.show()
     # Save the plot in experiments/results
-    plt.savefig("experiments/results/reconstructions.png")
+    plt.savefig("experiments/results/reconstructions2.png")
 
 if __name__ == "__main__":
     evaluate_model()
