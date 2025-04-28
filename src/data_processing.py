@@ -79,7 +79,7 @@ class BBBC021Dataset(Dataset):
         if self.transform:
             image = self.transform(image=image)['image']
         
-        return image, 0  # Dummy label for unsupervised VAE
+        return image, image_name
 
 # DataLoader setup
 def load_data(cfg: DictConfig, split: str = 'train', seed: int = 42) -> DataLoader:
