@@ -64,6 +64,21 @@ def validate_model(model, val_loader, device):
             val_loss += loss.item()
     return val_loss / len(val_loader.dataset)
 
+def get_gradients(model, mu, logvar):
+    # Compute the average gradient norm for all parameters in the encoder
+    encoder_grads = [p.grad.detach().abs().mean() for p in model.encoder.parameters() if p.grad is not None]
+    encoder_grad_norm = torch.stack(encoder_grads).mean() if encoder_grads else torch.tensor(0.)
+    
+    # Compute gradient norm for mu and logvar individually
+    mu_grad_norm = mu.grad.detach().abs().mean() if mu.grad is not None else torch.tensor(0.)
+    logvar_grad_norm = logvar.grad.detach().abs().mean() if logvar.grad is not None else torch.tensor(0.)
+    
+    # Compute the average gradient norm for all parameters in the decoder
+    decoder_grads = [p.grad.detach().abs().mean() for p in model.decoder.parameters() if p.grad is not None]
+    decoder_grad_norm = torch.stack(decoder_grads).mean() if decoder_grads else torch.tensor(0.)
+    
+    return encoder_grad_norm.item(), mu_grad_norm.item(), logvar_grad_norm.item(), decoder_grad_norm.item()
+
 # Train model
 @hydra.main(version_base=None, config_path="../configs", config_name="config")
 def train_model(cfg: DictConfig):
@@ -102,9 +117,16 @@ def train_model(cfg: DictConfig):
 
             optimizer.zero_grad()
             recon_batch, mu, logvar = model(x_batch)
+            
+            mu.retain_grad()
+            logvar.retain_grad()
+
             loss, recon_loss, kld_loss = model.loss_function(recon_batch, x_batch, mu, logvar)
 
             loss.backward()
+
+            encoder_grad, mu_grad, logvar_grad, decoder_grad = get_gradients(model, mu, logvar)
+
             optimizer.step()
 
             train_loss += loss.item()
@@ -114,16 +136,22 @@ def train_model(cfg: DictConfig):
                 "epoch": epoch + 1,
                 "batch_loss": loss.item() / len(x_batch),
                 "reconstruction_loss": recon_loss.item() / len(x_batch),
-                "kl_divergence": kld_loss.item() / len(x_batch)
+                "kl_divergence": kld_loss.item() / len(x_batch),
+                "grad_encoder": encoder_grad,
+                "grad_mu": mu_grad,
+                "grad_logvar": logvar_grad,
+                "grad_decoder": decoder_grad,
             })
                  
         # Compute average losses
         avg_train_loss = train_loss / len(train_loader.dataset)
         avg_val_loss = validate_model(model, val_loader, device)
+        grad_encoder, grad_mu, grad_logvar, grad_decoder = get_gradients(model, mu, logvar)
         
         # Log epoch-wise metrics to W&B
         print(f"Epoch [{epoch + 1}/{cfg.train.epochs}], Train Loss: {avg_train_loss:.4f}, Val Loss: {avg_val_loss:.4f}")
-        wandb.log({"epoch": epoch + 1, "epoch_train_loss": avg_train_loss, "epoch_val_loss": avg_val_loss})
+        wandb.log({"epoch": epoch + 1, "epoch_train_loss": avg_train_loss, "epoch_val_loss": avg_val_loss,
+                    "grad_encoder": grad_encoder, "grad_mu": grad_mu, "grad_logvar": grad_logvar, "grad_decoder": grad_decoder})
         
         # Switch back to training mode for next epoch
         model.train()
