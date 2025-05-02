@@ -119,7 +119,7 @@ def main():
     Z_train, Z_test, y_train, y_test = train_test_split(Z, y, test_size=0.2, random_state=42)
     # Print unique Y-test values coubt
     print(f"Unique Y-test values: {len(set(y_test.numpy()))}")
-    np.save("X_test.npy", Z_test.cpu().numpy())
+    np.save("Z_test.npy", Z_test.cpu().numpy())
     # Multinomial Softmax Classifier
     clf = LogisticRegression(
         multi_class="multinomial",
