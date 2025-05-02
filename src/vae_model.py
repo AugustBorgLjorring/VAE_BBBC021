@@ -60,9 +60,10 @@ class VAE(nn.Module):
         return x_recon, mu, log_var
 
     def loss_function(self, recon_x, x, mu, log_var):
+        B = x.size(0)
         D = x.size(1) * x.size(2) * x.size(3) 
         sigma = 1
-        recon_loss = 1/(2*sigma**2) * F.mse_loss(recon_x, x, reduction='sum') + 1/(2*sigma**2) * D * math.log(2 * math.pi)
+        recon_loss = 1/(2*sigma**2) * F.mse_loss(recon_x, x, reduction='sum') + B * D * 1/(2*sigma**2) * math.log(2 * math.pi)
         kld_loss = -0.5 * torch.sum(1 + log_var - mu.pow(2) - log_var.exp())
         loss = recon_loss + kld_loss
         return loss, recon_loss, kld_loss
