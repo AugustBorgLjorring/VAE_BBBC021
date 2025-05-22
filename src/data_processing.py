@@ -65,15 +65,15 @@ class BBBC021Dataset(Dataset):
             image = h5f['images'][idx]
             image_name = h5f['image_names'][idx].decode('utf-8') 
 
-        # Apply custom preprocessing
-        image = crop_image(image, pix=self.pix)
-        if image is None:
-            return None, None
+        # # Apply custom preprocessing
+        # image = crop_image(image, pix=self.pix)
+        # if image is None:
+        #     return None, None
         
-        image = normalize_image(image)
+        # image = normalize_image(image)
 
-        # Make image into a channel-first tensor
-        image = np.transpose(image, (2, 0, 1))
+        # # Make image into a channel-first tensor
+        # image = np.transpose(image, (2, 0, 1))
 
         # Apply optional transformations
         if self.transform:

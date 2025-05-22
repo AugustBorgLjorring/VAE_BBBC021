@@ -112,11 +112,16 @@ def train_model(cfg: DictConfig):
     for epoch in range(cfg.train.epochs):
         train_loss = 0.0
 
+        if epoch >= cfg.train.epochs - 2:
+            S = 10
+        else:
+            S = 1
+
         for x_batch, _ in tqdm(train_loader, desc=f"Epoch {epoch + 1}/{cfg.train.epochs}", leave=False):
             x_batch = x_batch.to(device)
 
             optimizer.zero_grad()
-            recon_batch, mu, logvar = model(x_batch)
+            recon_batch, mu, logvar = model(x_batch, S)
             
             mu.retain_grad()
             logvar.retain_grad()
@@ -134,9 +139,9 @@ def train_model(cfg: DictConfig):
             # Log batch-wise metrics to W&B
             wandb.log({
                 "epoch": epoch + 1,
-                "batch_loss": loss.item() / len(x_batch),
-                "reconstruction_loss": recon_loss.item() / len(x_batch),
-                "kl_divergence": kld_loss.item() / len(x_batch),
+                "batch_loss": loss.item() ,
+                "reconstruction_loss": recon_loss.item() ,
+                "kl_divergence": kld_loss.item() ,
                 "grad_encoder": encoder_grad,
                 "grad_mu": mu_grad,
                 "grad_logvar": logvar_grad,

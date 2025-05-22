@@ -115,7 +115,6 @@ def main():
     print(f"Labels shape: {y.shape}")
 
     # Classifier LDA
-
     Z_train, Z_test, y_train, y_test = train_test_split(Z, y, test_size=0.2, random_state=42)
     # Print unique Y-test values coubt
     print(f"Unique Y-test values: {len(set(y_test.numpy()))}")
@@ -124,8 +123,7 @@ def main():
     clf = LogisticRegression(
         multi_class="multinomial",
         solver="lbfgs",
-        max_iter=1000,
-        class_weight="balanced"
+        max_iter=1000
     )
 
     # Random Forest Classifier
