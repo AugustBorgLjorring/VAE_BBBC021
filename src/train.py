@@ -62,7 +62,7 @@ def validate_model(model, val_loader, device):
             recon_batch, mu, logvar = model(x_batch)
             loss, _, _ = model.loss_function(recon_batch, x_batch, mu, logvar)
             val_loss += loss.item()
-    return val_loss / len(val_loader.dataset)
+    return val_loss / len(val_loader)
 
 def get_gradients(model, mu, logvar):
     # Compute the average gradient norm for all parameters in the encoder
@@ -89,7 +89,7 @@ def train_model(cfg: DictConfig):
     np.random.seed(0)
 
     # Initialize Weights & Biases (wandb)
-    wandb.init(project=cfg.project.name, config=OmegaConf.to_container(cfg, resolve=True))
+    wandb.init(project=cfg.project.name, config=OmegaConf.to_container(cfg, resolve=True), monitor_gym=True)
 
     # Set device to GPU if available
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -112,11 +112,17 @@ def train_model(cfg: DictConfig):
     for epoch in range(cfg.train.epochs):
         train_loss = 0.0
 
+        # Multiple samples for Monte Carlo estimation at the end of training
+        if epoch >= cfg.train.epochs - 2:
+            S = 10
+        else:
+            S = 1
+
         for x_batch, _ in tqdm(train_loader, desc=f"Epoch {epoch + 1}/{cfg.train.epochs}", leave=False):
             x_batch = x_batch.to(device)
 
             optimizer.zero_grad()
-            recon_batch, mu, logvar = model(x_batch)
+            recon_batch, mu, logvar = model(x_batch, S)
             
             mu.retain_grad()
             logvar.retain_grad()
@@ -134,9 +140,9 @@ def train_model(cfg: DictConfig):
             # Log batch-wise metrics to W&B
             wandb.log({
                 "epoch": epoch + 1,
-                "batch_loss": loss.item() / len(x_batch),
-                "reconstruction_loss": recon_loss.item() / len(x_batch),
-                "kl_divergence": kld_loss.item() / len(x_batch),
+                "batch_loss": loss.item(),
+                "reconstruction_loss": recon_loss.item(),
+                "kl_divergence": kld_loss.item(),
                 "grad_encoder": encoder_grad,
                 "grad_mu": mu_grad,
                 "grad_logvar": logvar_grad,
@@ -144,7 +150,7 @@ def train_model(cfg: DictConfig):
             })
                  
         # Compute average losses
-        avg_train_loss = train_loss / len(train_loader.dataset)
+        avg_train_loss = train_loss / len(train_loader)
         avg_val_loss = validate_model(model, val_loader, device)
         grad_encoder, grad_mu, grad_logvar, grad_decoder = get_gradients(model, mu, logvar)
         

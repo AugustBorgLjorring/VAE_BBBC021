@@ -42,11 +42,13 @@ class VAE(nn.Module):
         log_var = self.fc_var(x)
         return mu, log_var
 
+    # # Original reparameterization trick with single sample
     # def reparameterize(self, mu, log_var):
     #     std = torch.exp(0.5 * log_var)
     #     eps = torch.randn_like(std)
     #     return mu + eps * std
     
+    # Reparameterization trick with multiple samples
     def reparameterize(self, mu, log_var, S=1):
         std = torch.exp(0.5 * log_var)            # (B, D)
         B, D = mu.shape
@@ -59,12 +61,14 @@ class VAE(nn.Module):
         x = self.decoder(x)
         return x
 
+    # # Original forward pass with single sample
     # def forward(self, x):
     #     mu, log_var = self.encode(x)
     #     z = self.reparameterize(mu, log_var)
     #     x_recon = self.decode(z)
     #     return x_recon, mu, log_var
 
+    # Forward pass with multiple samples
     def forward(self, x, S=1):
         mu, log_var = self.encode(x)
         z = self.reparameterize(mu, log_var, S)       # (S, B, D)
@@ -76,6 +80,7 @@ class VAE(nn.Module):
 
         return x_recon, mu, log_var
 
+    # # Original loss function with single sample
     # def loss_function(self, recon_x, x, mu, log_var):
     #     B = x.size(0)
     #     D = x.size(1) * x.size(2) * x.size(3) 
@@ -85,16 +90,18 @@ class VAE(nn.Module):
     #     loss = recon_loss + kld_loss
     #     return loss, recon_loss, kld_loss
 
+    # Loss function with multiple monte carlo samples
     def loss_function(self, x_recon, x, mu, log_var):
         S, B, C, H, W = x_recon.shape
         D = C * H * W
         sigma = 1
-        # 1) reconstruction term: average over S sum over pixels then avg over samples
+        # Reconstruction term: average over S sum over pixels then avg over samples
         squared_error  = F.mse_loss(x_recon, x.unsqueeze(0).expand_as(x_recon), reduction='none').view(S, B, -1).sum(-1)     # (S, B) per-sample MSE
         mse_term = (1 / (2 * sigma ** 2)) * squared_error.mean(0)  # (B,)
         constant = (D / 2) * math.log(2 * math.pi * sigma ** 2)
-        recon_loss = (mse_term + constant).sum()  # (B,)
-        kld_loss = -0.5 * torch.sum(1 + log_var - mu.pow(2) - log_var.exp())  # (B,)
+        recon_loss = (mse_term + constant).mean()  # (B,)
+        # KL divergence term: average over samples
+        kld_loss = -0.5 * torch.sum(1 + log_var - mu.pow(2) - log_var.exp(), dim=1).mean()  # (B,)
         loss = recon_loss + kld_loss
         return loss, recon_loss, kld_loss
 

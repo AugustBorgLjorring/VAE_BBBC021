@@ -8,6 +8,8 @@ experiments/models/
 experiments/results/
 outputs/
 wandb/
+plots/
+all_id_plots/
 
 # ⚙️ Configuration and Credentials
 *.env                # Environment variables (e.g., API keys)
@@ -31,3 +33,6 @@ config/.hydra/       # Hydra outputs
 *.out
 *.err
 *.sh
+
+# npy
+*.npy

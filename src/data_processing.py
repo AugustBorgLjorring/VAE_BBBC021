@@ -6,79 +6,34 @@ import numpy as np
 from torch.utils.data import random_split
 import torch
 
-def crop_image(image: np.ndarray, pix : int = 2) -> np.ndarray:
-    """
-    Params:
-    image: np.ndarray
-        An image with shape (68, 68, 3)
-
-    pix: int
-        Number of pixels to crop from the top and bottom of the image.
-
-    Crops an image from (68, 68, 3) to (64, 64, 3) by removing
-    two pixels from the top and bottom.
-
-    Returns the cropped image if shape matches, otherwise None.
-    """
-    if image.shape == (68, 68, 3):
-        return image[pix:-pix, pix:-pix, :]
-    else:
-        print(f"Skipping image with unexpected shape: {image.shape}")
-        return None
-
-def normalize_image(image: np.ndarray) -> np.ndarray:
-    """
-    Normalizes an image within each channel.
-    im = (im - im.min()) / (im.max() - im.min())
-    """
-    # Ensure the image is in float32 for precise calculations
-    image = image.astype(np.float32)
-
-    # Per-channel min-max normalization
-    min_vals = image.min(axis=(0, 1), keepdims=True)  # Shape (1, 1, 3)
-    max_vals = image.max(axis=(0, 1), keepdims=True)  # Shape (1, 1, 3)
-
-    # Avoid division by zero by setting zero range to 1
-    range_vals = np.maximum(max_vals - min_vals, 1e-5)
-
-    # Normalize the image to [0, 1] per channel
-    image_norm = (image - min_vals) / range_vals
-
-    return image_norm
-
 # Updated Dataset class for loading from an HDF5 file
 class BBBC021Dataset(Dataset):
-    def __init__(self, h5_file: str, transform=None, pix: int = 2):
+    def __init__(self, h5_file: str):
         self.h5_file = h5_file
-        self.transform = transform
-        self.pix = pix
-        
-        # Open the HDF5 file and get the total number of images
-        with h5py.File(self.h5_file, 'r') as h5f:
-            self.num_images = h5f['images'].shape[0]
+        self.h5f = None  # will be lazily opened in each worker
 
-    def __len__(self) -> int:
+        # Load metadata
+        with h5py.File(self.h5_file, 'r') as f:
+            self.num_images = f['images'].shape[0]
+            self.image_names = [n.decode('utf-8') for n in f['image_names']] # Load names in advance (49 MB)
+
+    def __len__(self):
         return self.num_images
 
+    # Lazily opens HDF5 file for safe multi-worker DataLoader use.
+    def _lazy_open(self):
+        if self.h5f is None:
+            self.h5f = h5py.File(self.h5_file, 'r')
+
     def __getitem__(self, idx: int):
-        with h5py.File(self.h5_file, 'r') as h5f:
-            image = h5f['images'][idx]
-            image_name = h5f['image_names'][idx].decode('utf-8') 
+        self._lazy_open()
 
-        # Apply custom preprocessing
-        image = crop_image(image, pix=self.pix)
-        if image is None:
-            return None, None
-        
-        image = normalize_image(image)
+        image = self.h5f['images'][idx] # Do not load the entire dataset into memory (22.5 GB)
+        image_name = self.image_names[idx]
 
-        # Make image into a channel-first tensor
-        image = np.transpose(image, (2, 0, 1))
+        # Convert image to torch tensor
+        image = torch.from_numpy(image) # dtype is float32
 
-        # Apply optional transformations
-        if self.transform:
-            image = self.transform(image=image)['image']
-        
         return image, image_name
 
 # DataLoader setup
@@ -98,7 +53,7 @@ def load_data(cfg: DictConfig, split: str = 'train', seed: int = 42) -> DataLoad
     torch.manual_seed(seed)  # Set seed for reproducibility
 
     # Load the full dataset
-    dataset = BBBC021Dataset(h5_file=cfg.data.train_path, pix=cfg.data.crop_pixels)
+    dataset = BBBC021Dataset(h5_file=cfg.data.train_path)
 
     # Compute dataset sizes
     total_size = len(dataset)
@@ -122,6 +77,10 @@ def load_data(cfg: DictConfig, split: str = 'train', seed: int = 42) -> DataLoad
     data_loader = DataLoader(selected_set, 
                              batch_size=cfg.train.batch_size, 
                              shuffle=(split == "train"), 
+                             drop_last=True,
+                             pin_memory=True,
+                             persistent_workers=True,
+                             prefetch_factor=4,
                              num_workers=4)
     
     return data_loader
