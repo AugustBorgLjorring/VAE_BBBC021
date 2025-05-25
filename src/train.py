@@ -89,7 +89,7 @@ def train_model(cfg: DictConfig):
     np.random.seed(0)
 
     # Initialize Weights & Biases (wandb)
-    wandb.init(project=cfg.project.name, config=OmegaConf.to_container(cfg, resolve=True), monitor_gym=True)
+    wandb.init(project=cfg.project.name, config=OmegaConf.to_container(cfg, resolve=True))
 
     # Set device to GPU if available
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
