@@ -9,7 +9,7 @@ from torchvision.utils import make_grid, save_image
 from matplotlib.offsetbox import OffsetImage, AnnotationBbox
 
 from vae_model import VAE, BetaVAE
-from data_processing import load_data
+from src.data_loading import load_data
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 os.environ["LOKY_MAX_CPU_COUNT"] = "4"
