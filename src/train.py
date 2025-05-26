@@ -155,6 +155,7 @@ def train_model(cfg: DictConfig):
                 "batch_loss":         total_loss.item() / x_batch.size(0),
                 "reconstruction_loss": recon_loss.item() / x_batch.size(0),
                 "kl_divergence":       kld_loss.item() / x_batch.size(0),
+                "adv_feature_loss":    feat_loss.item() / x_batch.size(0),
                 "grad_encoder":        grad_enc,
                 "grad_mu":             grad_mu,
                 "grad_logvar":         grad_logvar,
