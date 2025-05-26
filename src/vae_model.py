@@ -105,7 +105,7 @@ class BetaVAE(VAE):
 
 class VAEPlus(BetaVAE):
     def __init__(self, in_channels=3, latent_dim=256,
-                 beta=1.0, feature_weight = 1.0, T=16687, use_adv=True):
+                 beta=1.0, feature_weight = 1.0, T=steps_per_epoch, use_adv=True):
         super().__init__(in_channels, latent_dim, beta)
         self.feature_weight = feature_weight
         self.T = T
@@ -126,7 +126,9 @@ class VAEPlus(BetaVAE):
         gamma_values = []
         if self.use_adv:
             # Freeze D
-            for p in self.discriminator.parameters(): p.requires_grad = False
+            for p in self.discriminator.parameters(): 
+                p.requires_grad = False
+
             _, feats_real = self.discriminator(x)
             _, feats_fake = self.discriminator(x_recon)
 
