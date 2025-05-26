@@ -97,6 +97,8 @@ def train_model(cfg: DictConfig):
     train_loader = load_data(cfg, split="train")
     val_loader   = load_data(cfg, split="val")
 
+    steps_per_epoch = len(train_loader)
+    cfg.model.adv_schedule_slope = steps_per_epoch * 10 
     # model + optimizers
     model, disc_optimizer = initialize_model(cfg, device)
     vae_optimizer = optim.Adam(model.parameters(), lr=cfg.train.learning_rate)
@@ -130,10 +132,10 @@ def train_model(cfg: DictConfig):
             mu.retain_grad(); logvar.retain_grad()
             recon_loss, kld_loss, feat_loss, gammas = model.loss_function(recon, x_batch, mu, logvar)
 
-            if batch_idx & 100 == 0:
-                print(f"[Step {global_step}] Recon={recon_loss.item():.4f}, "
-                    f"KL={kld_loss.item():.4f}, AdvFeat={d_loss.item():.4f}")
-                print("    γ:", [f"{g:.3f}" for g in gammas])
+            # if batch_idx & 100 == 0:
+            #     print(f"[Step {global_step}] Recon={recon_loss.item():.4f}, "
+            #         f"KL={kld_loss.item():.4f}, AdvFeat={d_loss.item():.4f}")
+            #     print("    γ:", [f"{g:.3f}" for g in gammas])
 
             total_loss = recon_loss + model.beta * kld_loss + feat_loss
 

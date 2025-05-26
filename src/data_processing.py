@@ -1,8 +1,6 @@
-import os
 import h5py
 from torch.utils.data import DataLoader, Dataset
 from omegaconf import DictConfig
-import numpy as np
 from torch.utils.data import random_split
 import torch
 
@@ -10,19 +8,30 @@ import torch
 class BBBC021Dataset(Dataset):
     def __init__(self, h5_file: str):
         self.h5_file = h5_file
-        
-        # Open the HDF5 file and get the total number of images
-        with h5py.File(self.h5_file, 'r') as h5f:
-            self.num_images = h5f['images'].shape[0]
+        self.h5f = None  # will be lazily opened in each worker
 
-    def __len__(self) -> int:
+        # Load metadata
+        with h5py.File(self.h5_file, 'r') as f:
+            self.num_images = f['images'].shape[0]
+            self.image_names = [n.decode('utf-8') for n in f['image_names']] # Load names in advance (49 MB)
+
+    def __len__(self):
         return self.num_images
 
+    # Lazily opens HDF5 file for safe multi-worker DataLoader use.
+    def _lazy_open(self):
+        if self.h5f is None:
+            self.h5f = h5py.File(self.h5_file, 'r')
+
     def __getitem__(self, idx: int):
-        with h5py.File(self.h5_file, 'r') as h5f:
-            image = h5f['images'][idx]
-            image_name = h5f['image_names'][idx].decode('utf-8') 
-        
+        self._lazy_open()
+
+        image = self.h5f['images'][idx] # Do not load the entire dataset into memory (22.5 GB)
+        image_name = self.image_names[idx]
+
+        # Convert image to torch tensor
+        image = torch.from_numpy(image) # dtype is float32
+
         return image, image_name
 
 # DataLoader setup
@@ -66,6 +75,10 @@ def load_data(cfg: DictConfig, split: str = 'train', seed: int = 42) -> DataLoad
     data_loader = DataLoader(selected_set, 
                              batch_size=cfg.train.batch_size, 
                              shuffle=(split == "train"), 
+                             drop_last=True,
+                             pin_memory=True,
+                             persistent_workers=True,
+                             prefetch_factor=2,
                              num_workers=4)
     
     return data_loader
