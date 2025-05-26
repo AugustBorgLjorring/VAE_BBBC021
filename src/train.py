@@ -10,7 +10,7 @@ import hydra
 import wandb
 
 from vae_model import VAE, BetaVAE
-from data_processing import load_data
+from src.data_loading import load_data
 
 # Initialize model based on config
 def initialize_model(cfg, device):
@@ -89,7 +89,7 @@ def train_model(cfg: DictConfig):
     np.random.seed(0)
 
     # Initialize Weights & Biases (wandb)
-    wandb.init(project=cfg.project.name, config=OmegaConf.to_container(cfg, resolve=True), monitor_gym=True)
+    wandb.init(project=cfg.project.name, config=OmegaConf.to_container(cfg, resolve=True))
 
     # Set device to GPU if available
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -114,7 +114,7 @@ def train_model(cfg: DictConfig):
 
         # Multiple samples for Monte Carlo estimation at the end of training
         if epoch >= cfg.train.epochs - 2:
-            S = 10
+            S = 5
         else:
             S = 1
 
@@ -122,12 +122,12 @@ def train_model(cfg: DictConfig):
             x_batch = x_batch.to(device)
 
             optimizer.zero_grad()
-            recon_batch, mu, logvar = model(x_batch, S)
+            recon_batch, mu, logvar = model(x_batch, S) # (S, B, C, H, W),  (B, D), (B, D)
             
             mu.retain_grad()
             logvar.retain_grad()
 
-            loss, recon_loss, kld_loss = model.loss_function(recon_batch, x_batch, mu, logvar)
+            loss, recon_loss, kld_loss = model.loss_function(recon_batch, x_batch, mu, logvar) # (S, B, C, H, W), (B, C, H, W), (B, D), (B, D)
 
             loss.backward()
 

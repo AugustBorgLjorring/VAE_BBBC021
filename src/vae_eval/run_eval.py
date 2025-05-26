@@ -1,6 +1,6 @@
 import argparse
 from model_utils   import load_model_and_cfg
-from src.data_processing    import load_data
+from src.data_loading    import load_data
 from viz_utils     import Visualizer
 
 # Import all tasks

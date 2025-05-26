@@ -69,7 +69,7 @@ def run_tsne_nn_grid(model, loader, viz, args, grid_size=70):
 
     dx = xs[1]-xs[0] if grid_size>1 else coords[:,0].ptp()
     dy = ys[1]-ys[0] if grid_size>1 else coords[:,1].ptp()
-    threshold = max(dx, dy)
+    threshold = 0.5*max(dx, dy)
     valid = (dists <= threshold)
 
     unique = np.unique(idxs[valid])

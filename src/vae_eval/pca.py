@@ -110,7 +110,7 @@ def run_pca_nn_grid(model, loader, viz, args, grid_size=70, border=2):
     # 5) Threshold by grid spacing
     dx = xs[1]-xs[0] if grid_size>1 else x_coords.ptp()
     dy = ys[1]-ys[0] if grid_size>1 else y_coords.ptp()
-    threshold = max(dx, dy)
+    threshold = 0.5*max(dx, dy)
     valid = (dists <= threshold)
 
     # 6) Decode only the needed latents
@@ -151,7 +151,7 @@ def run_pca_nn_grid(model, loader, viz, args, grid_size=70, border=2):
     viz.save(plt.gcf(), f"pca_nn_mosaic_{G}_bordered", dpi=dpi)
 
 
-def run_pca_nn_grid_orig(model, loader, viz, args, grid_size=10, border=2):
+def run_pca_nn_grid_orig(model, loader, viz, args, grid_size=70, border=2):
     """
     Fast mosaic version of the PCA NN grid showing ORIGINAL images:
       1) Encode all test latents mu(x) and stash originals
