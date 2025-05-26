@@ -9,32 +9,29 @@ class Discriminator(nn.Module):
         super().__init__()
         # Conv block 1
         self.conv1 = nn.Conv2d(in_channels, 32, kernel_size=5, stride=2, padding=2)
-        self.bn1   = nn.BatchNorm2d(32)
         # Conv block 2
         self.conv2 = nn.Conv2d(32, 64, kernel_size=5, stride=2, padding=2)
-        self.bn2   = nn.BatchNorm2d(64)
         # Conv block 3
         self.conv3 = nn.Conv2d(64, 128, kernel_size=5, stride=2, padding=2)
-        self.bn3   = nn.BatchNorm2d(128)
         # Conv block 4
         self.conv4 = nn.Conv2d(128, 256, kernel_size=5, stride=2, padding=2)
-        self.bn4   = nn.BatchNorm2d(256)
+        
         # Final classifier conv → raw logit
         self.classifier = nn.Conv2d(256, 1, kernel_size=4)
 
     def forward(self, x):
         feature_maps = []
         # Block 1
-        x1 = F.leaky_relu(self.bn1(self.conv1(x)), 0.01)
+        x1 = F.leaky_relu(self.conv1(x), 0.01)
         feature_maps.append(x1)
         # Block 2
-        x2 = F.leaky_relu(self.bn2(self.conv2(x1)), 0.01)
+        x2 = F.leaky_relu(self.conv2(x1), 0.01)
         feature_maps.append(x2)
         # Block 3
-        x3 = F.leaky_relu(self.bn3(self.conv3(x2)), 0.01)
+        x3 = F.leaky_relu(self.conv3(x2), 0.01)
         feature_maps.append(x3)
         # Block 4
-        x4 = F.leaky_relu(self.bn4(self.conv4(x3)), 0.01)
+        x4 = F.leaky_relu(self.conv4(x3), 0.01)
         feature_maps.append(x4)
         # Classifier
         logits = self.classifier(x4).view(x4.size(0), -1).squeeze(1)
