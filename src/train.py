@@ -15,6 +15,9 @@ import wandb
 from vae_model import VAE, BetaVAE, VAEPlus
 from data_processing import load_data
 
+from torch.nn.utils import clip_grad_norm_
+import torch.nn as nn
+
 # Helpers from your original script:
 def validate_model(model, val_loader, device):
     model.eval()
@@ -23,9 +26,9 @@ def validate_model(model, val_loader, device):
         for x_batch, _ in val_loader:
             x = x_batch.to(device).float()
             recon, mu, logvar = model(x)
-            loss, _, _, _ = model.loss_function(recon, x, mu, logvar)
-            val_loss += loss.item()
-    return val_loss / len(val_loader.dataset)
+            total_loss, _, _, _, _ = model.loss_function(recon, x, mu, logvar)
+            val_loss += total_loss.item()
+    return val_loss / len(val_loader)
 
 def get_gradients(model, mu, logvar):
     enc_grads = [p.grad.detach().abs().mean() for p in model.encoder.parameters() if p.grad is not None]
@@ -65,19 +68,17 @@ def initialize_model(cfg, device):
             cfg.model.input_channels,
             cfg.model.latent_dim,
             cfg.model.beta,
-            cfg.model.feature_weight,
             cfg.model.adv_schedule_slope
         ).to(device)
-        disc_opt = optim.Adam(model.discriminator.parameters(), lr=cfg.train.discriminator_lr)
-        return model, disc_opt
+        return model
     else:
         raise ValueError(f"Model type {cfg.model.name} not recognized")
 
 @hydra.main(version_base=None, config_path="../configs", config_name="config")
 def train_model(cfg: DictConfig):
-    # restore cwd so data paths resolve exactly as before
-    os.chdir(get_original_cwd())
-    print(f"Working dir restored to {os.getcwd()}\n")
+    # # restore cwd so data paths resolve exactly as before
+    # os.chdir(get_original_cwd())
+    # print(f"Working dir restored to {os.getcwd()}\n")
     print(OmegaConf.to_yaml(cfg))
 
     # reproducibility
@@ -99,94 +100,106 @@ def train_model(cfg: DictConfig):
 
     steps_per_epoch = len(train_loader)
     cfg.model.adv_schedule_slope = steps_per_epoch * 10 
+    print(cfg.model.adv_schedule_slope)
     # model + optimizers
-    model, disc_optimizer = initialize_model(cfg, device)
-    vae_optimizer = optim.Adam(model.parameters(), lr=cfg.train.learning_rate)
+    model = initialize_model(cfg, device)
+
+
+    model.vae_modules = nn.ModuleList([
+        model.encoder,
+        model.decoder,
+        model.fc_mu,
+        model.fc_logvar,
+        model.decoder_input
+    ])
+
+    vae_optimizer = optim.Adam(model.vae_modules.parameters(), lr=cfg.train.learning_rate)
+    
+    if model.adv:
+        disc_optimizer = optim.SGD(model.discriminator.parameters(), lr=cfg.train.discriminator_lr, momentum=0.9)
 
     # training
-    global_step = 0
     for epoch in range(cfg.train.epochs):
         model.train()
         train_loss = 0.0
-        disc_loss_total = 0.0
+        total_recon_loss = 0.0
+        total_kld_loss = 0.0
 
         # if epoch >= cfg.train.epochs -2:
         #     S = 5
         # else:
         #     S = 1
 
-        for batch_idx, (x_batch,_) in enumerate(tqdm(train_loader, desc=f"Epoch {epoch+1}/{cfg.train.epochs}", leave=False), start = 1):
-            global_step += 1
+        for x_batch, _ in tqdm(train_loader, desc=f"Epoch {epoch+1}/{cfg.train.epochs}", leave=False):
             x_batch = x_batch.to(device).float()
-            # 1) discriminator step
-            if disc_optimizer:
-                x_recon, mu, logvar = model(x_batch)
-                d_loss = model.loss_discriminator(x_batch, x_recon)
-                disc_optimizer.zero_grad(); d_loss.backward(); disc_optimizer.step()
-                disc_loss_total += d_loss.item()
-            else:
-                d_loss = 0.
+
+            recon, mu, logvar = model(x_batch)
+
+            # 1) Discriminator step
+            if model.adv:
+                d_loss = model.loss_discriminator(recon, x_batch)
+                disc_optimizer.zero_grad()
+                d_loss.backward()
+
+                clip_grad_norm_(model.discriminator.parameters(), max_norm=1.0)
+                disc_optimizer.step()
+
+                model.t += 1
 
             # 2) VAE step
-            recon, mu, logvar = model(x_batch)
             mu.retain_grad(); logvar.retain_grad()
-            recon_loss, kld_loss, feat_loss, gammas = model.loss_function(recon, x_batch, mu, logvar)
+        
+            if model.adv:
+                total_loss, recon_loss, kld_loss, feat_loss, gammas = model.loss_function(recon, x_batch, mu, logvar)
+            else:
+                total_loss, recon_loss, kld_loss, _, _ = model.loss_function(recon, x_batch, mu, logvar)
 
-            # if batch_idx & 100 == 0:
-            #     print(f"[Step {global_step}] Recon={recon_loss.item():.4f}, "
-            #         f"KL={kld_loss.item():.4f}, AdvFeat={d_loss.item():.4f}")
-            #     print("    γ:", [f"{g:.3f}" for g in gammas])
-
-            total_loss = recon_loss + model.beta * kld_loss + feat_loss
-
-
-            # backward + step
             vae_optimizer.zero_grad()
             total_loss.backward()
-            # capture gradients
+            clip_grad_norm_(model.vae_modules.parameters(), max_norm=1.0)
+
             grad_enc, grad_mu, grad_logvar, grad_dec = get_gradients(model, mu, logvar)
             vae_optimizer.step()
 
             train_loss += total_loss.item()
+            total_recon_loss += recon_loss.item()
+            total_kld_loss += kld_loss.item()
 
             # --- batch‐level logging (exactly as before + discriminator) ---
             log_dict = {
                 "epoch":              epoch + 1,
-                "batch_loss":         total_loss.item() / x_batch.size(0),
-                "reconstruction_loss": recon_loss.item() / x_batch.size(0),
-                "kl_divergence":       kld_loss.item() / x_batch.size(0),
-                "adv_feature_loss":    feat_loss.item() / x_batch.size(0),
+                "batch_loss":         total_loss.item(),
+                "reconstruction_loss": recon_loss.item(),
+                "kl_divergence":       kld_loss.item(),
+                "adv_feature_loss":    feat_loss.item(),
                 "grad_encoder":        grad_enc,
                 "grad_mu":             grad_mu,
                 "grad_logvar":         grad_logvar,
                 "grad_decoder":        grad_dec
             }
-            if disc_optimizer:
-                log_dict["batch_disc_loss"] = d_loss.item() / x_batch.size(0)
 
-            gamma_dict = {f"gamma/layer_{i}": float(g) for i, g in enumerate(gammas)}
-            log_dict.update(gamma_dict)
+            if model.adv:
+                log_dict["batch_disc_loss"] = d_loss.item()
 
-            wandb.log(log_dict, step=global_step)
+                gamma_dict = {f"gamma/layer_{i}": float(g) for i, g in enumerate(gammas)}
+                log_dict.update(gamma_dict)
+
+            wandb.log(log_dict)
         # --- end of epoch logs ---
-        avg_train_loss = train_loss / len(train_loader.dataset)
+        avg_train_loss = train_loss / len(train_loader)
         avg_val_loss   = validate_model(model, val_loader, device)
-        avg_disc_loss  = disc_loss_total / len(train_loader) if disc_optimizer else 0.0
 
         # print to terminal
-        print(f"Epoch [{epoch+1}/{cfg.train.epochs}], "
-              f"Train Loss: {avg_train_loss:.4f}, Val Loss: {avg_val_loss:.4f}, Disc Loss: {avg_disc_loss:.4f}")
+        print(f"Epoch [{epoch+1}/{cfg.train.epochs}] Train Loss: {avg_train_loss:.4f}, Val Loss: {avg_val_loss:.4f}")
 
         # W&B epoch‐level logging
         wandb.log({
             "epoch":             epoch + 1,
             "epoch_train_loss":  avg_train_loss,
             "epoch_val_loss":    avg_val_loss,
-            "epoch_disc_loss":   avg_disc_loss
+            "epoch_recon_loss":  total_recon_loss / len(train_loader),
+            "epoch_kld_loss":    total_kld_loss / len(train_loader)
         })
-
-        # Monitor gammas
-        # print(f"[Batch {global_step}] gammas:", gammas.detach().cpu().numpy())
 
     # final checkpoint
     save_checkpoint(model, vae_optimizer, epoch, avg_train_loss, avg_val_loss, cfg)
