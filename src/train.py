@@ -26,7 +26,8 @@ def validate_model(model, val_loader, device):
         for x_batch, _ in val_loader:
             x = x_batch.to(device).float()
             recon, mu, logvar = model(x)
-            total_loss, _, _, _, _ = model.loss_function(recon, x, mu, logvar)
+            ret = model.loss_function(recon, x, mu, logvar)
+            total_loss = ret[0]
             val_loss += total_loss.item()
     return val_loss / len(val_loader)
 
@@ -99,7 +100,7 @@ def train_model(cfg: DictConfig):
     val_loader   = load_data(cfg, split="val")
 
     steps_per_epoch = len(train_loader)
-    cfg.model.adv_schedule_slope = steps_per_epoch * 10 
+    cfg.model.adv_schedule_slope = steps_per_epoch * 2 
     print(cfg.model.adv_schedule_slope)
     # model + optimizers
     model = initialize_model(cfg, device)
@@ -150,9 +151,10 @@ def train_model(cfg: DictConfig):
             mu.retain_grad(); logvar.retain_grad()
         
             if model.adv:
-                total_loss, recon_loss, kld_loss, feat_loss, gammas = model.loss_function(recon, x_batch, mu, logvar)
+                total_loss, recon_loss, kld_loss, feat_loss, gammas, feat_norm_real, feat_norm_fake = model.loss_function(recon, x_batch, mu, logvar)
             else:
                 total_loss, recon_loss, kld_loss, _, _ = model.loss_function(recon, x_batch, mu, logvar)
+                feat_norm_real, feat_norm_fake = 0.0, 0.0
 
             vae_optimizer.zero_grad()
             total_loss.backward()
@@ -175,7 +177,9 @@ def train_model(cfg: DictConfig):
                 "grad_encoder":        grad_enc,
                 "grad_mu":             grad_mu,
                 "grad_logvar":         grad_logvar,
-                "grad_decoder":        grad_dec
+                "grad_decoder":        grad_dec,
+                "feat_norm_real":      feat_norm_real,
+                "feat_norm_fake":      feat_norm_fake
             }
 
             if model.adv:

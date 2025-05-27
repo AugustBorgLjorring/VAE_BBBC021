@@ -132,6 +132,24 @@ class VAEPlus(BetaVAE):
             # Unfreeze D
             self.discriminator.requires_grad_(True)
 
+            # assume each f in feats_real has shape (B, C, H, W)
+            real_layer_norms = [
+                f.flatten(start_dim=1).norm(dim=1).mean()   # tensor scalar
+                for f in feats_real
+            ]
+            fake_layer_norms = [
+                f.flatten(start_dim=1).norm(dim=1).mean()
+                for f in feats_fake
+            ]
+
+            # Stack layer-norms and average across layers
+            feat_norm_real = torch.stack(real_layer_norms).mean()  # tensor scalar
+            feat_norm_fake = torch.stack(fake_layer_norms).mean()
+
+            # (Optional) Convert to Python floats for logging:
+            feat_norm_real = feat_norm_real.item()
+            feat_norm_fake = feat_norm_fake.item()
+            
             for i, (real, fake) in enumerate(zip(feats_real, feats_fake)):
                 g = self.gamma(i)
                 gamma_values.append(g)
@@ -146,7 +164,7 @@ class VAEPlus(BetaVAE):
 
         total_loss = recon_loss + self.beta * kl_loss + adv_fm_loss
 
-        return total_loss, recon_loss, kl_loss, adv_fm_loss, gamma_values
+        return total_loss, recon_loss, kl_loss, adv_fm_loss, gamma_values, feat_norm_real, feat_norm_fake
 
     def loss_discriminator(self, x_recon, x):
         real_logits, _ = self.discriminator(x)
