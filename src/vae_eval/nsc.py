@@ -6,7 +6,6 @@ from tqdm import tqdm
 import torch
 import pandas as pd
 from sklearn.neighbors import KNeighborsClassifier
-from sklearn.metrics import accuracy_score
 import os
 import h5py
 
@@ -14,8 +13,9 @@ import h5py
 os.environ["LOKY_MAX_CPU_COUNT"] = "4"
 
 def main():
-    model, cfg = load_model_and_cfg("experiments/models/vae_checkpoint_1745463247.pth")
-    cfg.data.train_path = "D:/BBBC021/BBBC021_cleaned_preprocessed.h5"
+    checkpoint_path = "experiments/models/vae_checkpoint_1745463247.pth"
+    model, cfg = load_model_and_cfg(checkpoint_path)
+    cfg.data.train_path = "C:/BBBC021/BBBC021_cleaned_preprocessed.h5"
     cfg.data.metadata_path = "data/raw/metadata_dataset.h5"
 
     data_loader = load_data(cfg, split="all")
@@ -187,11 +187,89 @@ def main():
 
     plt.title("NSC: Predictions per Compound (True MoA shown on Y-axis)")
     plt.xlabel("Predicted MoA")
-    plt.ylabel("Compound (True MoA)")
+    plt.ylabel("True MoA (Compound)")
     plt.xticks(rotation=45, ha="right")
     plt.yticks(rotation=0)
     plt.tight_layout()
+    plt.savefig(f"experiments/results/{checkpoint_path.split('/')[-1].split('.')[0]}/nsc_heatmap.png")
+    
+    
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+    from sklearn.decomposition import PCA
+    import matplotlib.lines as mlines
+
+    # PCA
+    pca = PCA(n_components=2)
+    pca_embeddings = pca.fit_transform(np.stack(treatment_profiles["embedding"]))
+    pc1, pc2 = pca_embeddings[:, 0], pca_embeddings[:, 1]
+
+    compounds = treatment_profiles["compound"]
+    moas = treatment_profiles["moa"]
+
+    # Unique identifiers
+    unique_compounds = np.unique(compounds)
+    unique_moas = sorted(np.unique(moas))  # sorted MOAs
+
+    # Assign consistent color and shape
+    moa_palette = sns.color_palette("tab20", len(unique_moas))
+    moa_color_dict = {moa: color for moa, color in zip(unique_moas, moa_palette)}
+
+    markers = ['o', 's', 'D', '^', 'v', 'P', 'X', '*', 'h', 'H', '8', '<', '>', 'p', '|', '_']
+    compound_marker_dict = {compound: markers[i % len(markers)] for i, compound in enumerate(unique_compounds)}
+
+    # Plot all points
+    plt.figure(figsize=(12, 9))
+    sns.set(style="whitegrid")
+
+    # For building the legend later
+    legend_entries = []
+
+    for i in range(len(treatment_profiles)):
+        compound = compounds[i]
+        moa = moas[i]
+        label = f"{compound} ({moa})"
+        
+        # Plot point
+        plt.scatter(
+            pc1[i],
+            pc2[i],
+            c=[moa_color_dict[moa]],
+            marker=compound_marker_dict[compound],
+            s=120,
+            edgecolor='black',
+            linewidth=0.5,
+        )
+
+        # Keep track of (label, color, marker) — avoiding duplicates
+        if label not in [entry[0] for entry in legend_entries]:
+            legend_entries.append((label, moa_color_dict[moa], compound_marker_dict[compound], moa))
+
+    # Sort legend entries by MOA
+    legend_entries_sorted = sorted(legend_entries, key=lambda x: x[3])  # sort by moa name
+
+    # Create legend handles
+    handles = [
+        mlines.Line2D([], [], marker=marker, color=color, label=label,
+                    markersize=10, linestyle='None', markeredgecolor='black', markeredgewidth=0.5)
+        for label, color, marker, _ in legend_entries_sorted
+    ]
+
+    # Add title and axis
+    plt.title("PCA of Treatment Profiles", fontsize=16, weight="bold", pad=15)
+    plt.xlabel(f"PC1 ({pca.explained_variance_ratio_[0]*100:.1f}%)", fontsize=13)
+    plt.ylabel(f"PC2 ({pca.explained_variance_ratio_[1]*100:.1f}%)", fontsize=13)
+
+    # Custom legend (sorted by MOA)
+    plt.legend(handles=handles, bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0., fontsize=9, title="Compound (MOA)")
+    plt.tight_layout()
+    sns.despine()
+
+    # Save
+    plt.savefig(f"experiments/results/{checkpoint_path.split('/')[-1].split('.')[0]}/nsc_pca.png", dpi=300)
     plt.show()
+
+    
 
 if __name__ == "__main__":
     main()
