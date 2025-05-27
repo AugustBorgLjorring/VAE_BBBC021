@@ -29,9 +29,7 @@ class VAE(nn.Module):
             nn.LeakyReLU(0.2),
             nn.ConvTranspose2d(64, 32, kernel_size=4, stride=2, padding=1),
             nn.LeakyReLU(0.2),
-            nn.ConvTranspose2d(32, 32, kernel_size=4, stride=2, padding=1),
-            nn.LeakyReLU(0.2),
-            nn.Conv2d(32, input_channels, kernel_size=3, padding=1),
+            nn.ConvTranspose2d(32, input_channels, kernel_size=4, stride=2, padding=1),
             nn.Sigmoid()
         )
 
