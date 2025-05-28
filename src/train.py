@@ -22,14 +22,17 @@ import torch.nn as nn
 def validate_model(model, val_loader, device):
     model.eval()
     val_loss = 0.0
+    val_recon_loss = 0.0
+    val_kld_loss = 0.0
     with torch.no_grad():
         for x_batch, _ in val_loader:
             x = x_batch.to(device).float()
             recon, mu, logvar = model(x)
             ret = model.loss_function(recon, x, mu, logvar)
-            total_loss = ret[0]
-            val_loss += total_loss.item()
-    return val_loss / len(val_loader)
+            val_loss += ret[0].item()  
+            val_recon_loss = ret[1].item()
+            val_kld_loss = ret[2].item()
+    return val_loss / len(val_loader), val_recon_loss / len(val_loader), val_kld_loss / len(val_loader)
 
 def get_gradients(model, mu, logvar):
     enc_grads = [p.grad.detach().abs().mean() for p in model.encoder.parameters() if p.grad is not None]
@@ -191,7 +194,7 @@ def train_model(cfg: DictConfig):
             wandb.log(log_dict)
         # --- end of epoch logs ---
         avg_train_loss = train_loss / len(train_loader)
-        avg_val_loss   = validate_model(model, val_loader, device)
+        avg_val_loss, avg_val_recon_loss, avg_val_kld_loss = validate_model(model, val_loader, device)
 
         # print to terminal
         print(f"Epoch [{epoch+1}/{cfg.train.epochs}] Train Loss: {avg_train_loss:.4f}, Val Loss: {avg_val_loss:.4f}")
@@ -202,7 +205,9 @@ def train_model(cfg: DictConfig):
             "epoch_train_loss":  avg_train_loss,
             "epoch_val_loss":    avg_val_loss,
             "epoch_recon_loss":  total_recon_loss / len(train_loader),
-            "epoch_kld_loss":    total_kld_loss / len(train_loader)
+            "epoch_kld_loss":    total_kld_loss / len(train_loader),
+            "epoch_val_recon_loss": avg_val_recon_loss,
+            "epoch_val_kld_loss": avg_val_kld_loss
         })
 
     # final checkpoint
