@@ -1,26 +1,24 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.distributions as dist
 import math
 
 # Based on: Lafarge et al., "Capturing Single-Cell Phenotypic Variation via Unsupervised Representation Learning" (2019)
-
 class Discriminator(nn.Module):
     def __init__(self, in_channels=3):
         super().__init__()
         # Conv block 1
-        self.conv1 = nn.Conv2d(in_channels, 32, kernel_size=5, stride=2, padding=2)
+        self.conv1 = nn.Conv2d(in_channels, 32, kernel_size=5, stride=2, padding=2) # 68x68 -> 34x34
         # Conv block 2
-        self.conv2 = nn.Conv2d(32, 32, kernel_size=5, stride=2, padding=2)
+        self.conv2 = nn.Conv2d(32, 32, kernel_size=5, stride=2, padding=2) # 34x34 -> 17x17
         # Conv block 3
-        self.conv3 = nn.Conv2d(32, 32, kernel_size=5, stride=2, padding=2)
+        self.conv3 = nn.Conv2d(32, 32, kernel_size=5, stride=2, padding=2) # 17x17 -> 9x9
         # Conv block 4
-        self.conv4 = nn.Conv2d(32, 32, kernel_size=5, stride=2, padding=2)
+        self.conv4 = nn.Conv2d(32, 32, kernel_size=5, stride=2, padding=2) # 9x9 -> 5x5
         
         # Final classifier conv → raw logit
         self.flatten = nn.Flatten()
-        self.classifier = nn.Linear(32*5*5, 1)
+        self.classifier = nn.Linear(32 * 5 * 5, 1)
 
     def forward(self, x):
         feature_maps = []
@@ -46,22 +44,30 @@ class VAE(nn.Module):
         super().__init__()
         # Encoder: 4 conv layers
         self.encoder = nn.Sequential(
-            nn.Conv2d(in_channels, 32, 5, stride=2, padding=2), nn.LeakyReLU(0.01),
-            nn.Conv2d(32, 32, 5, stride=2, padding=2), nn.LeakyReLU(0.01),
-            nn.Conv2d(32, 32, 5, stride=2, padding=2), nn.LeakyReLU(0.01),
-            nn.Conv2d(32, 32, 5, stride=2, padding=2), nn.LeakyReLU(0.01),
+            nn.Conv2d(in_channels, 32, kernel_size=5, stride=2, padding=2), # # 68x68 -> 34x34
+            nn.LeakyReLU(0.01),
+            nn.Conv2d(32, 32, kernel_size=5, stride=2, padding=2), # 34x34 -> 17x17
+            nn.LeakyReLU(0.01),
+            nn.Conv2d(32, 32, kernel_size=5, stride=2, padding=2), # 17x17 -> 9x9
+            nn.LeakyReLU(0.01),
+            nn.Conv2d(32, 32, kernel_size=5, stride=2, padding=2), # 9x9 -> 5x5
+            nn.LeakyReLU(0.01),
             nn.Flatten()
         )
-        self.fc_mu     = nn.Linear(32*5*5, latent_dim)
-        self.fc_logvar = nn.Linear(32*5*5, latent_dim)
+        self.fc_mu     = nn.Linear(32 * 5 * 5, latent_dim)
+        self.fc_logvar = nn.Linear(32 * 5 * 5, latent_dim)
         # Decoder: linear + 4 transpose convs
-        self.decoder_input = nn.Linear(latent_dim, 32*5*5)
+        self.decoder_input = nn.Linear(latent_dim, 32 * 5 * 5)
         self.decoder = nn.Sequential(
-            nn.Unflatten(1, (32,5,5)),
-            nn.ConvTranspose2d(32,32,5,2,2,output_padding=1), nn.LeakyReLU(0.01),
-            nn.ConvTranspose2d(32,32,5,2,2,output_padding=1),  nn.LeakyReLU(0.01),
-            nn.ConvTranspose2d(32,32,5,2,2,output_padding=1),   nn.LeakyReLU(0.01),
-            nn.ConvTranspose2d(32,in_channels,5,2,2,output_padding=1), nn.Sigmoid()
+            nn.Unflatten(1, (32, 5, 5)),
+            nn.ConvTranspose2d(32, 32, kernel_size=5, stride=2, padding=2, output_padding=0), # 5x5 -> 9x9
+            nn.LeakyReLU(0.01),
+            nn.ConvTranspose2d(32, 32, kernel_size=5, stride=2, padding=2, output_padding=0), # 9x9 -> 17x17
+            nn.LeakyReLU(0.01),
+            nn.ConvTranspose2d(32, 32, kernel_size=5, stride=2, padding=2, output_padding=1), # 17x17 -> 34x34
+            nn.LeakyReLU(0.01),
+            nn.ConvTranspose2d(32, in_channels, kernel_size=5, stride=2, padding=2, output_padding=1), # 34x34 -> 68x68
+            nn.Sigmoid()
         )
 
     def encode(self, x):
