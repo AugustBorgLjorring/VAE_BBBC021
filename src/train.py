@@ -10,7 +10,7 @@ import hydra
 import wandb
 
 from vae_model import VAE, BetaVAE
-from src.data_loading import load_data
+from    data_loading import load_data
 
 # Initialize model based on config
 def initialize_model(cfg, device):
