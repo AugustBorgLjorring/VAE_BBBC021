@@ -12,14 +12,15 @@ class Discriminator(nn.Module):
         # Conv block 1
         self.conv1 = nn.Conv2d(in_channels, 32, kernel_size=5, stride=2, padding=2)
         # Conv block 2
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=5, stride=2, padding=2)
+        self.conv2 = nn.Conv2d(32, 32, kernel_size=5, stride=2, padding=2)
         # Conv block 3
-        self.conv3 = nn.Conv2d(64, 128, kernel_size=5, stride=2, padding=2)
+        self.conv3 = nn.Conv2d(32, 32, kernel_size=5, stride=2, padding=2)
         # Conv block 4
-        self.conv4 = nn.Conv2d(128, 256, kernel_size=5, stride=2, padding=2)
+        self.conv4 = nn.Conv2d(32, 32, kernel_size=5, stride=2, padding=2)
         
         # Final classifier conv → raw logit
-        self.classifier = nn.Conv2d(256, 1, kernel_size=4)
+        self.flatten = nn.Flatten()
+        self.classifier = nn.Linear(32*5*5, 1)
 
     def forward(self, x):
         feature_maps = []
@@ -36,7 +37,8 @@ class Discriminator(nn.Module):
         x4 = F.leaky_relu(self.conv4(x3), 0.01)
         feature_maps.append(x4)
         # Classifier
-        logits = self.classifier(x4).view(x4.size(0), -1).squeeze(1)
+        x_flat = self.flatten(x4)
+        logits = self.classifier(x_flat)
         return logits, feature_maps
 
 class VAE(nn.Module):
@@ -45,20 +47,20 @@ class VAE(nn.Module):
         # Encoder: 4 conv layers
         self.encoder = nn.Sequential(
             nn.Conv2d(in_channels, 32, 5, stride=2, padding=2), nn.LeakyReLU(0.01),
-            nn.Conv2d(32, 64, 5, stride=2, padding=2), nn.LeakyReLU(0.01),
-            nn.Conv2d(64,128, 5, stride=2, padding=2), nn.LeakyReLU(0.01),
-            nn.Conv2d(128,256,5, stride=2, padding=2), nn.LeakyReLU(0.01),
+            nn.Conv2d(32, 32, 5, stride=2, padding=2), nn.LeakyReLU(0.01),
+            nn.Conv2d(32, 32, 5, stride=2, padding=2), nn.LeakyReLU(0.01),
+            nn.Conv2d(32, 32, 5, stride=2, padding=2), nn.LeakyReLU(0.01),
             nn.Flatten()
         )
-        self.fc_mu     = nn.Linear(256*4*4, latent_dim)
-        self.fc_logvar = nn.Linear(256*4*4, latent_dim)
+        self.fc_mu     = nn.Linear(32*5*5, latent_dim)
+        self.fc_logvar = nn.Linear(32*5*5, latent_dim)
         # Decoder: linear + 4 transpose convs
-        self.decoder_input = nn.Linear(latent_dim, 256*4*4)
+        self.decoder_input = nn.Linear(latent_dim, 32*5*5)
         self.decoder = nn.Sequential(
-            nn.Unflatten(1, (256,4,4)),
-            nn.ConvTranspose2d(256,128,5,2,2,output_padding=1), nn.LeakyReLU(0.01),
-            nn.ConvTranspose2d(128,64,5,2,2,output_padding=1),  nn.LeakyReLU(0.01),
-            nn.ConvTranspose2d(64,32,5,2,2,output_padding=1),   nn.LeakyReLU(0.01),
+            nn.Unflatten(1, (32,5,5)),
+            nn.ConvTranspose2d(32,32,5,2,2,output_padding=1), nn.LeakyReLU(0.01),
+            nn.ConvTranspose2d(32,32,5,2,2,output_padding=1),  nn.LeakyReLU(0.01),
+            nn.ConvTranspose2d(32,32,5,2,2,output_padding=1),   nn.LeakyReLU(0.01),
             nn.ConvTranspose2d(32,in_channels,5,2,2,output_padding=1), nn.Sigmoid()
         )
 

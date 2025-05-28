@@ -1,5 +1,5 @@
 train_path: "data/raw/BBBC021_cleaned_preprocessed.h5"
-crop_pixels: 2
+crop_pixels: 0
 train_ratio: 0.8
 val_ratio: 0.1
 test_ratio: 0.1

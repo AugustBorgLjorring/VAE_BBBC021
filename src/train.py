@@ -218,7 +218,7 @@ def train_model(cfg: DictConfig):
         })
 
             # Save model checkpoint
-        if epoch + 1 % 5 == 0 or epoch == cfg.train.epochs - 1:
+        if (epoch + 1) % 5 == 0 or epoch == cfg.train.epochs - 1:
             save_checkpoint(model, vae_optimizer, epoch, avg_train_loss, avg_val_loss, cfg)
 
 if __name__ == "__main__":
