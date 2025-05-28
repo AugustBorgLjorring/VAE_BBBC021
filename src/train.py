@@ -43,23 +43,28 @@ def get_gradients(model, mu, logvar):
     grad_dec = torch.stack(dec_grads).mean().item() if dec_grads else 0.0
     return grad_enc, grad_mu, grad_logvar, grad_dec
 
+# Save model checkpoint
 def save_checkpoint(model, optimizer, epoch, train_loss, val_loss, cfg):
     checkpoint = {
         'epoch': epoch + 1,
         'model_state_dict': model.state_dict(),
         'optimizer_state_dict': optimizer.state_dict(),
+        'disc_optimizer_state_dict': model.discriminator.state_dict() if hasattr(model, 'discriminator') else None,
         'train_loss': train_loss,
         'val_loss': val_loss,
         'config': OmegaConf.to_container(cfg, resolve=True)
     }
-    path = f"experiments/models/vae_checkpoint_{int(time.time())}.pth"
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    torch.save(checkpoint, path)
-    artifact = wandb.Artifact('vae_checkpoint', type='model')
-    artifact.add_file(path)
-    wandb.log_artifact(artifact)
-    print(f"Model checkpoint saved at {path}")
-
+    model_save_path = f"experiments/models/vae_checkpoint_{START_TIME}/epoch_{epoch+1}.pth"
+    os.makedirs(os.path.dirname(model_save_path), exist_ok=True)
+    torch.save(checkpoint, model_save_path)
+    # Upload checkpoint to W&B
+    if epoch == cfg.train.epochs - 1:
+        artifact = wandb.Artifact('vae_checkpoint', type='model')
+        artifact.add_file(model_save_path)
+        wandb.log_artifact(artifact)
+        wandb.finish()
+    
+    print(f"Model checkpoint saved at {model_save_path}")
 # Initialize model based on config
 def initialize_model(cfg, device):
     name = cfg.model.name.lower()
@@ -77,6 +82,8 @@ def initialize_model(cfg, device):
         return model
     else:
         raise ValueError(f"Model type {cfg.model.name} not recognized")
+
+START_TIME = int(time.time())
 
 @hydra.main(version_base=None, config_path="../configs", config_name="config")
 def train_model(cfg: DictConfig):
@@ -210,8 +217,9 @@ def train_model(cfg: DictConfig):
             "epoch_val_kld_loss": avg_val_kld_loss
         })
 
-    # final checkpoint
-    save_checkpoint(model, vae_optimizer, epoch, avg_train_loss, avg_val_loss, cfg)
+            # Save model checkpoint
+        if epoch + 1 % 5 == 0 or epoch == cfg.train.epochs - 1:
+            save_checkpoint(model, vae_optimizer, epoch, avg_train_loss, avg_val_loss, cfg)
 
 if __name__ == "__main__":
     train_model()
