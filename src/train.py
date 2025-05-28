@@ -9,7 +9,6 @@ from tqdm import tqdm
 
 from omegaconf import DictConfig, OmegaConf
 import hydra
-from hydra.utils import get_original_cwd
 import wandb
 
 from vae_model import VAE, BetaVAE, VAEPlus
@@ -30,8 +29,8 @@ def validate_model(model, val_loader, device):
             recon, mu, logvar = model(x)
             ret = model.loss_function(recon, x, mu, logvar)
             val_loss += ret[0].item()  
-            val_recon_loss = ret[1].item()
-            val_kld_loss = ret[2].item()
+            val_recon_loss += ret[1].item()
+            val_kld_loss += ret[2].item()
     return val_loss / len(val_loader), val_recon_loss / len(val_loader), val_kld_loss / len(val_loader)
 
 def get_gradients(model, mu, logvar):
@@ -118,8 +117,10 @@ def train_model(cfg: DictConfig):
 
     vae_params = (
         list(model.encoder.parameters()) +
-        list(model.fc_mu.parameters()) + list(model.fc_logvar.parameters()) +
-        list(model.decoder_input.parameters()) + list(model.decoder.parameters())
+        list(model.fc_mu.parameters()) + 
+        list(model.fc_logvar.parameters()) +
+        list(model.decoder_input.parameters()) + 
+        list(model.decoder.parameters())
     )
 
     vae_optimizer = optim.Adam(vae_params, lr=cfg.train.learning_rate)
