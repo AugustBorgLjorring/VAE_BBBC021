@@ -31,3 +31,6 @@ config/.hydra/       # Hydra outputs
 *.out
 *.err
 *.sh
+
+plots/
+all_id_plots/
