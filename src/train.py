@@ -106,15 +106,13 @@ def train_model(cfg: DictConfig):
     model = initialize_model(cfg, device)
 
 
-    model.vae_modules = nn.ModuleList([
-        model.encoder,
-        model.decoder,
-        model.fc_mu,
-        model.fc_logvar,
-        model.decoder_input
-    ])
+    vae_params = (
+        list(model.encoder.parameters()) +
+        list(model.fc_mu.parameters()) + list(model.fc_logvar.parameters()) +
+        list(model.decoder_input.parameters()) + list(model.decoder.parameters())
+    )
 
-    vae_optimizer = optim.Adam(model.vae_modules.parameters(), lr=cfg.train.learning_rate)
+    vae_optimizer = optim.Adam(vae_params, lr=cfg.train.learning_rate)
     
     if model.adv:
         disc_optimizer = optim.SGD(model.discriminator.parameters(), lr=cfg.train.discriminator_lr, momentum=0.9)
@@ -133,12 +131,14 @@ def train_model(cfg: DictConfig):
 
         for x_batch, _ in tqdm(train_loader, desc=f"Epoch {epoch+1}/{cfg.train.epochs}", leave=False):
             x_batch = x_batch.to(device).float()
+            batch1 = x_batch[:len(x_batch)//2]
+            batch2 = x_batch[len(x_batch)//2:]
 
-            recon, mu, logvar = model(x_batch)
+            recon, mu, logvar = model(batch1)
 
             # 1) Discriminator step
             if model.adv:
-                d_loss = model.loss_discriminator(recon, x_batch)
+                d_loss = model.loss_discriminator(recon, batch2)
                 disc_optimizer.zero_grad()
                 d_loss.backward()
 
@@ -151,14 +151,14 @@ def train_model(cfg: DictConfig):
             mu.retain_grad(); logvar.retain_grad()
         
             if model.adv:
-                total_loss, recon_loss, kld_loss, feat_loss, gammas, feat_norm_real, feat_norm_fake = model.loss_function(recon, x_batch, mu, logvar)
+                total_loss, recon_loss, kld_loss, feat_loss, gammas, feat_norm_real, feat_norm_fake = model.loss_function(recon, batch1, mu, logvar)
             else:
                 total_loss, recon_loss, kld_loss, _, _ = model.loss_function(recon, x_batch, mu, logvar)
                 feat_norm_real, feat_norm_fake = 0.0, 0.0
 
             vae_optimizer.zero_grad()
             total_loss.backward()
-            clip_grad_norm_(model.vae_modules.parameters(), max_norm=1.0)
+            clip_grad_norm_(vae_params, max_norm=1.0)
 
             grad_enc, grad_mu, grad_logvar, grad_dec = get_gradients(model, mu, logvar)
             vae_optimizer.step()
