@@ -12,12 +12,12 @@ import h5py
 # LOKY_MAX_CPU_COUNT
 os.environ["LOKY_MAX_CPU_COUNT"] = "4"
 
-def main():
-    checkpoint_path = "experiments/models/vae_checkpoint_1745463247.pth"
-    model, cfg = load_model_and_cfg(checkpoint_path)
-    cfg.data.train_path = "C:/BBBC021/BBBC021_cleaned_preprocessed.h5"
+def run_nsc(model, loader, viz, args):
+    cfg = model.cfg
+    cfg.data.train_path = "D:/BBBC021/BBBC021_dataset_cleaned_maxnorm_68.h5"
     cfg.data.metadata_path = "data/raw/metadata_dataset.h5"
 
+    # use a different loader as we want to load all data
     data_loader = load_data(cfg, split="all")
     data_metadata = load_metadata(cfg)
 
@@ -191,7 +191,7 @@ def main():
     plt.xticks(rotation=45, ha="right")
     plt.yticks(rotation=0)
     plt.tight_layout()
-    plt.savefig(f"experiments/results/{checkpoint_path.split('/')[-1].split('.')[0]}/nsc_heatmap.png")
+    viz.save(plt.gcf(), "nsc_heatmap")
     
     
     import matplotlib.pyplot as plt
@@ -220,7 +220,7 @@ def main():
 
     # Plot all points
     plt.figure(figsize=(12, 9))
-    sns.set(style="whitegrid")
+    sns.set_theme(style="whitegrid")
 
     # For building the legend later
     legend_entries = []
@@ -266,10 +266,4 @@ def main():
     sns.despine()
 
     # Save
-    plt.savefig(f"experiments/results/{checkpoint_path.split('/')[-1].split('.')[0]}/nsc_pca.png", dpi=300)
-    plt.show()
-
-    
-
-if __name__ == "__main__":
-    main()
+    viz.save(plt.gcf(), "nsc_pca")

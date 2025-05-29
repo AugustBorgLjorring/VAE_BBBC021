@@ -22,6 +22,7 @@ def load_model_and_cfg(ckpt_path):
         model = VAEPlus(cfg.model.input_channels, cfg.model.latent_dim, cfg.model.beta, cfg.model.adv_schedule_slope)
 
     # Load model state dict
+    model.cfg = cfg
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
-    return model, cfg
+    return model

@@ -11,6 +11,7 @@ from tsne          import run_tsne, run_tsne_labeled, run_tsne_nn_grid, run_tsne
 from pca           import run_pca_grid, run_pca_nn_grid, run_pca_nn_grid_orig
 from latent        import run_roundtrip, run_plot_latent, run_latent_usage, run_top_latent_dims
 from sensitivity   import run_gradient_sensitivity, run_traversal_sensitivity
+from nsc           import run_nsc
 
 import os
 os.environ["LOKY_MAX_CPU_COUNT"] = "4"
@@ -34,6 +35,7 @@ TASKS = {
     "top_latent": run_top_latent_dims,
     "sens_grad": run_gradient_sensitivity,
     # "sens_traverse": run_traversal_sensitivity,
+    "nsc": run_nsc,
 }
 
 def parse_args():
@@ -51,12 +53,13 @@ def parse_args():
     p.add_argument("--sens_n", type=int, default=100)
     p.add_argument("--sens_eps", type=float, default=0.1)
 
-    p.add_argument("--split", choices=["train", "val", "test"], default="test")
+    p.add_argument("--split", choices=["train", "val", "test", "all"], default="test")
     return p.parse_args()
 
 def main():
     args       = parse_args()
-    model, cfg = load_model_and_cfg(args.checkpoint)
+    model      = load_model_and_cfg(args.checkpoint)
+    cfg        = model.cfg
     loader     = load_data(cfg, split=args.split)
     viz        = Visualizer(args.checkpoint)
 
