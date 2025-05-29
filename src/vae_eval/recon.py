@@ -19,9 +19,8 @@ def run_reconstruct(model, loader, viz, args):
         ax0.imshow(org_imgs[i].permute(1,2,0), vmin=0, vmax=1)
         ax0.set_xticks([]); ax0.set_yticks([])
 
-        # Convert Recon (S=1, B=1, C, H, W), Original (B=1, C, H, W) to (C, H, W), and (B=1, D)
-        _, recon_loss, kld_loss = model.loss_function(recon_imgs[i:i+1].unsqueeze(0), org_imgs[i:i+1], 
-                                                      mus[i:i+1], logvars[i:i+1])
+        # Recon (B=1, C, H, W), Original (B=1, C, H, W) to (C, H, W), and (B=1, D)
+        _, recon_loss, kld_loss, _ = model.loss_function(recon_imgs[i:i+1], org_imgs[i:i+1], mus[i:i+1], logvars[i:i+1])
         recon_loss = recon_loss.item()
         kld_loss = kld_loss.item()
 

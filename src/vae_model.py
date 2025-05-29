@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import math
 
-class VAE(nn.Module):
+class VAEMedium(nn.Module):
     def __init__(self, in_channels=3, latent_dim=256):
         super().__init__()
         # Encoder: 4 conv layers
@@ -71,7 +71,7 @@ class VAE(nn.Module):
 
         total_loss = recon_loss + kl_loss
 
-        return total_loss, recon_loss, kl_loss, 0, 0 # mean over batch (scalar, scalar), last two are placeholders for compatibility
+        return total_loss, recon_loss, kl_loss, 0  # mean over batch (scalar, scalar), last is a placeholder for compatibility
 
     def sample(self, num_samples, current_device):
         z = torch.randn(num_samples, self.fc_mu.out_features).to(current_device)
@@ -81,21 +81,76 @@ class VAE(nn.Module):
     def generate(self, x):
         return self.forward(x)[0]
 
-class BetaVAE(VAE):
+class VAESmall(VAEMedium):
+    def __init__(self, in_channels=3, latent_dim=256):
+        super().__init__(in_channels, latent_dim)
+        self.encoder = nn.Sequential(
+            nn.Conv2d(in_channels, 16, kernel_size=5, stride=2, padding=2), # 68x68 -> 34x34
+            nn.LeakyReLU(0.01),
+            nn.Conv2d(16, 16, kernel_size=5, stride=2, padding=2),          # 34x34 -> 17x17
+            nn.LeakyReLU(0.01),
+            nn.Conv2d(16, 16, kernel_size=5, stride=2, padding=2),          # 17x17 -> 9x9
+            nn.LeakyReLU(0.01),
+            nn.Flatten()
+        )
+        self.fc_mu = nn.Linear(16 * 9 * 9, latent_dim)
+        self.fc_logvar = nn.Linear(16 * 9 * 9, latent_dim)
+        self.decoder_input = nn.Linear(latent_dim, 16 * 9 * 9)
+        self.decoder = nn.Sequential(
+            nn.Unflatten(1, (16, 9, 9)),
+            nn.ConvTranspose2d(16, 16, kernel_size=5, stride=2, padding=2, output_padding=0), # 9x9 -> 17x17
+            nn.LeakyReLU(0.01),
+            nn.ConvTranspose2d(16, 16, kernel_size=5, stride=2, padding=2, output_padding=1), # 17x17 -> 34x34
+            nn.LeakyReLU(0.01),
+            nn.ConvTranspose2d(16, in_channels, kernel_size=5, stride=2, padding=2, output_padding=1), # 34x34 -> 68x68
+            nn.Sigmoid()
+        )
+
+class VAELarge(VAEMedium):
+    def __init__(self, in_channels=3, latent_dim=256):
+        super().__init__(in_channels, latent_dim)
+        self.encoder = nn.Sequential(
+            nn.Conv2d(in_channels, 32, kernel_size=5, stride=2, padding=2), # 68x68 -> 34x34
+            nn.LeakyReLU(0.01),
+            nn.Conv2d(32, 64, kernel_size=5, stride=2, padding=2),          # 34x34 -> 17x17
+            nn.LeakyReLU(0.01),
+            nn.Conv2d(64, 128, kernel_size=5, stride=2, padding=2),          # 17x17 -> 9x9
+            nn.LeakyReLU(0.01),
+            nn.Conv2d(128, 256, kernel_size=5, stride=2, padding=2), # 9x9 -> 5x5
+            nn.LeakyReLU(0.01),
+            nn.Flatten()
+        )
+        self.fc_mu = nn.Linear(256 * 5 * 5, latent_dim)
+        self.fc_logvar = nn.Linear(256 * 5 * 5, latent_dim)
+        self.decoder_input = nn.Linear(latent_dim, 256 * 5 * 5)
+        self.decoder = nn.Sequential(
+            nn.Unflatten(1, (256, 5, 5)),
+            nn.ConvTranspose2d(256, 128, kernel_size=5, stride=2, padding=2, output_padding=0), # 5x5 -> 9x9
+            nn.LeakyReLU(0.01),
+            nn.ConvTranspose2d(128, 64, kernel_size=5, stride=2, padding=2, output_padding=0), # 9x9 -> 17x17
+            nn.LeakyReLU(0.01),
+            nn.ConvTranspose2d(64, 32, kernel_size=5, stride=2, padding=2, output_padding=1), # 17x17 -> 34x34
+            nn.LeakyReLU(0.01),
+            nn.ConvTranspose2d(32, in_channels, kernel_size=5, stride=2, padding=2, output_padding=1), # 34x34 -> 68x68
+            nn.Sigmoid()
+        )
+
+class BetaVAE(VAELarge):
     def __init__(self, in_channels=3, latent_dim=256, beta=1.0):
         super().__init__(in_channels, latent_dim)
         self.beta = beta
 
     def loss_function(self, x_recon, x, mu, logvar):
-        _, recon_loss, kl_loss, _, _ = super().loss_function(x_recon, x, mu, logvar)
+        _, recon_loss, kl_loss, _ = super().loss_function(x_recon, x, mu, logvar)
         total_loss = recon_loss + self.beta * kl_loss # beta scaling of KL divergence
-        return total_loss, recon_loss, kl_loss, 0, 0  # last two are placeholders for compatibility
+        return total_loss, recon_loss, kl_loss, 0  # last is a placeholder for compatibility
 
 class VAEPlus(BetaVAE):
     def __init__(self, in_channels=3, latent_dim=256, beta=1.0, T=1, use_adverserial=True):
         super().__init__(in_channels, latent_dim, beta)
         self.T = T
         self.t = 0
+        self.gamma_values = []
         self.adv = use_adverserial
         if self.adv:
             self.discriminator = Discriminator(in_channels)
@@ -105,7 +160,7 @@ class VAEPlus(BetaVAE):
         return min(max((self.t/self.T) - i, 0.0), 1.0) # From Lafarge2019
 
     def loss_function(self, x_recon, x, mu, logvar):
-        _, recon_loss, kl_loss, _, _ = super().loss_function(x_recon, x, mu, logvar)
+        _, recon_loss, kl_loss, _ = super().loss_function(x_recon, x, mu, logvar)
 
         if self.adv:
             adv_fm_loss_per_sample = torch.zeros(x.size(0), device=x.device)  # (B,)
@@ -132,15 +187,16 @@ class VAEPlus(BetaVAE):
 
             adv_fm_loss = adv_fm_loss_per_sample.mean()              # mean over batch (B,) -mean-> scalar
 
+            self.gamma_values = gamma_values # Store gamma values for logging
+
             total_loss = recon_loss + self.beta * kl_loss + adv_fm_loss
         else:
             # Return the standard VAE loss
             adv_fm_loss = 0
-            gamma_values = []
 
             total_loss = recon_loss + self.beta * kl_loss
 
-        return total_loss, recon_loss, kl_loss, adv_fm_loss, gamma_values
+        return total_loss, recon_loss, kl_loss, adv_fm_loss
 
 
     def loss_discriminator(self, x_recon, x):
