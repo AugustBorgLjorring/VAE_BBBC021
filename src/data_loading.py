@@ -34,6 +34,32 @@ class BBBC021Dataset(Dataset):
 
         return image, image_name
 
+class BBBC021Metadata(Dataset):
+    def __init__(self, h5_file: str):
+        self.h5_file = h5_file
+        self.h5f = None  # will be lazily opened in each worker
+
+        # Load metadata
+        with h5py.File(self.h5_file, 'r') as f:
+            self.length = f['metadata_well'].shape[0]
+
+    def __len__(self):
+        return self.length
+
+    def _lazy_open(self):
+        if self.h5f is None:
+            self.h5f = h5py.File(self.h5_file, 'r')
+
+    def __getitem__(self, idx: int):
+        self._lazy_open()
+
+        well = self.h5f['metadata_well'][idx].decode('utf-8')
+        compound = self.h5f['metadata_compound'][idx].decode('utf-8')
+        concentration = self.h5f['metadata_concentration'][idx].decode('utf-8')
+        moa = self.h5f['metadata_moa'][idx].decode('utf-8')
+
+        return well, compound, concentration, moa
+
 # DataLoader setup
 def load_data(cfg: DictConfig, split: str = 'train', seed: int = 42) -> DataLoader:
     """
@@ -69,16 +95,28 @@ def load_data(cfg: DictConfig, split: str = 'train', seed: int = 42) -> DataLoad
         selected_set = val_dataset
     elif split == "test":
         selected_set = test_dataset
+    elif split == "all":
+        selected_set = dataset
     else:
-        raise ValueError(f"Invalid dataset split '{split}'. Choose from ['train', 'val', 'test'].")
-    
-    data_loader = DataLoader(selected_set, 
-                             batch_size=cfg.train.batch_size, 
-                             shuffle=(split == "train"), 
-                             drop_last=True,
+        raise ValueError(f"Invalid dataset split '{split}'. Choose from ['train', 'val', 'test', 'all'].")
+
+    data_loader = DataLoader(selected_set,
+                             batch_size=cfg.train.batch_size,
+                             shuffle=(split == "train"),
+                             drop_last=(split == "train"),
                              pin_memory=True,
                              persistent_workers=True,
                              prefetch_factor=4,
                              num_workers=4)
     
+    return data_loader
+
+
+def load_metadata(cfg: DictConfig) -> DataLoader:
+    dataset = BBBC021Metadata(h5_file=cfg.data.metadata_path)
+
+    data_loader = DataLoader(dataset,
+                             batch_size=cfg.train.batch_size,
+                             shuffle=False)
+
     return data_loader
