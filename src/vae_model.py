@@ -39,12 +39,6 @@ class VAE(nn.Module):
         mu = self.fc_mu(x)
         log_var = self.fc_var(x)
         return mu, log_var
-
-    # # Original reparameterization trick with single sample
-    # def reparameterize(self, mu, log_var):
-    #     std = torch.exp(0.5 * log_var)
-    #     eps = torch.randn_like(std)
-    #     return mu + eps * std
     
     # Reparameterization trick with multiple samples
     def reparameterize(self, mu, log_var, S=1):
@@ -59,13 +53,6 @@ class VAE(nn.Module):
         x = self.decoder(x)
         return x
 
-    # # Original forward pass with single sample
-    # def forward(self, x):
-    #     mu, log_var = self.encode(x)
-    #     z = self.reparameterize(mu, log_var)
-    #     x_recon = self.decode(z)
-    #     return x_recon, mu, log_var
-
     # Forward pass with multiple samples
     def forward(self, x, S=1):
         mu, log_var = self.encode(x)
@@ -77,16 +64,6 @@ class VAE(nn.Module):
         x_recon = x_flat.view(S, mu.size(0), C, H, W) # (S, B, C, H, W)
 
         return x_recon, mu, log_var
-
-    # # Original loss function with single sample
-    # def loss_function(self, recon_x, x, mu, log_var):
-    #     B = x.size(0)
-    #     D = x.size(1) * x.size(2) * x.size(3) 
-    #     sigma = 1
-    #     recon_loss = 1/(2*sigma**2) * F.mse_loss(recon_x, x, reduction='sum') + 1/(2*sigma**2) * D * B * math.log(2 * math.pi)
-    #     kld_loss = -0.5 * torch.sum(1 + log_var - mu.pow(2) - log_var.exp())
-    #     loss = recon_loss + kld_loss
-    #     return loss, recon_loss, kld_loss
 
     # Loss function with multiple monte carlo samples
     def loss_function(self, x_recon, x, mu, log_var):
