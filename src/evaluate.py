@@ -8,7 +8,7 @@ from omegaconf import OmegaConf
 from torchvision.utils import make_grid, save_image
 from matplotlib.offsetbox import OffsetImage, AnnotationBbox
 
-from vae_model import VAE, BetaVAE
+from vae_model import VAE, BetaVAE, VAEPlus
 from src.data_loading import load_data
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
