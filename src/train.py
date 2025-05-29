@@ -113,8 +113,9 @@ def train_model(cfg: DictConfig):
 
         for x_batch, _ in tqdm(train_loader, desc=f"Epoch {epoch+1}/{cfg.train.epochs}", leave=False):
             x_batch = x_batch.to(device).float()
-            batch1 = x_batch[:len(x_batch)//2]
-            batch2 = x_batch[len(x_batch)//2:]
+            half = x_batch.size(0) // 2
+            batch1 = x_batch[:half]
+            batch2 = x_batch[half:]
 
             recon, mu, logvar = model(batch1)
 

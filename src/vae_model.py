@@ -3,42 +3,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import math
 
-# Based on: Lafarge et al., "Capturing Single-Cell Phenotypic Variation via Unsupervised Representation Learning" (2019)
-class Discriminator(nn.Module):
-    def __init__(self, in_channels=3):
-        super().__init__()
-        # Conv block 1
-        self.conv1 = nn.Conv2d(in_channels, 32, kernel_size=5, stride=2, padding=2) # 68x68 -> 34x34
-        # Conv block 2
-        self.conv2 = nn.Conv2d(32, 32, kernel_size=5, stride=2, padding=2) # 34x34 -> 17x17
-        # Conv block 3
-        self.conv3 = nn.Conv2d(32, 32, kernel_size=5, stride=2, padding=2) # 17x17 -> 9x9
-        # Conv block 4
-        self.conv4 = nn.Conv2d(32, 64, kernel_size=5, stride=2, padding=2) # 9x9 -> 5x5
-        
-        # Final classifier conv → raw logit
-        self.flatten = nn.Flatten()
-        self.classifier = nn.Linear(64 * 5 * 5, 1)
-
-    def forward(self, x):
-        feature_maps = []
-        # Block 1
-        x1 = F.leaky_relu(self.conv1(x), 0.01)
-        feature_maps.append(x1)
-        # Block 2
-        x2 = F.leaky_relu(self.conv2(x1), 0.01)
-        feature_maps.append(x2)
-        # Block 3
-        x3 = F.leaky_relu(self.conv3(x2), 0.01)
-        feature_maps.append(x3)
-        # Block 4
-        x4 = F.leaky_relu(self.conv4(x3), 0.01)
-        feature_maps.append(x4)
-        # Classifier
-        x_flat = self.flatten(x4)
-        logits = self.classifier(x_flat)
-        return logits, feature_maps
-
 class VAE(nn.Module):
     def __init__(self, in_channels=3, latent_dim=256):
         super().__init__()
@@ -114,7 +78,7 @@ class BetaVAE(VAE):
 
 class VAEPlus(BetaVAE):
     def __init__(self, in_channels=3, latent_dim=256,
-                 beta=1.0, T=0, use_adverserial=True):
+                 beta=1.0, T=1, use_adverserial=True):
         super().__init__(in_channels, latent_dim, beta)
         self.T = T
         self.t = 0
@@ -168,3 +132,39 @@ class VAEPlus(BetaVAE):
         loss_real = bce(real_logits, target_real)
         loss_fake = bce(fake_logits, target_fake)
         return loss_real + loss_fake
+
+# Based on: Lafarge et al., "Capturing Single-Cell Phenotypic Variation via Unsupervised Representation Learning" (2019)
+class Discriminator(nn.Module):
+    def __init__(self, in_channels=3):
+        super().__init__()
+        # Conv block 1
+        self.conv1 = nn.Conv2d(in_channels, 32, kernel_size=5, stride=2, padding=2) # 68x68 -> 34x34
+        # Conv block 2
+        self.conv2 = nn.Conv2d(32, 32, kernel_size=5, stride=2, padding=2) # 34x34 -> 17x17
+        # Conv block 3
+        self.conv3 = nn.Conv2d(32, 32, kernel_size=5, stride=2, padding=2) # 17x17 -> 9x9
+        # Conv block 4
+        self.conv4 = nn.Conv2d(32, 64, kernel_size=5, stride=2, padding=2) # 9x9 -> 5x5
+        
+        # Final classifier conv → raw logit
+        self.flatten = nn.Flatten()
+        self.classifier = nn.Linear(64 * 5 * 5, 1)
+
+    def forward(self, x):
+        feature_maps = []
+        # Block 1
+        x1 = F.leaky_relu(self.conv1(x), 0.01)
+        feature_maps.append(x1)
+        # Block 2
+        x2 = F.leaky_relu(self.conv2(x1), 0.01)
+        feature_maps.append(x2)
+        # Block 3
+        x3 = F.leaky_relu(self.conv3(x2), 0.01)
+        feature_maps.append(x3)
+        # Block 4
+        x4 = F.leaky_relu(self.conv4(x3), 0.01)
+        feature_maps.append(x4)
+        # Classifier
+        x_flat = self.flatten(x4)
+        logits = self.classifier(x_flat)
+        return logits, feature_maps
