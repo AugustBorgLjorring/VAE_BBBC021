@@ -14,11 +14,11 @@ class Discriminator(nn.Module):
         # Conv block 3
         self.conv3 = nn.Conv2d(32, 32, kernel_size=5, stride=2, padding=2) # 17x17 -> 9x9
         # Conv block 4
-        self.conv4 = nn.Conv2d(32, 32, kernel_size=5, stride=2, padding=2) # 9x9 -> 5x5
+        self.conv4 = nn.Conv2d(32, 64, kernel_size=5, stride=2, padding=2) # 9x9 -> 5x5
         
         # Final classifier conv → raw logit
         self.flatten = nn.Flatten()
-        self.classifier = nn.Linear(32 * 5 * 5, 1)
+        self.classifier = nn.Linear(64 * 5 * 5, 1)
 
     def forward(self, x):
         feature_maps = []
@@ -77,7 +77,7 @@ class VAE(nn.Module):
         return mu, logvar
 
     def reparameterize(self, mu, logvar):
-        std = (0.5 * logvar).exp()
+        std = torch.exp(0.5 * logvar)
         eps = torch.randn_like(std)
         return mu + eps * std
 
@@ -127,10 +127,11 @@ class VAEPlus(BetaVAE):
 
     def loss_function(self, x_recon, x, mu, logvar):
         _, recon_loss, kl_loss, _, _ = super().loss_function(x_recon, x, mu, logvar)
-        adv_fm_loss_per_sample = torch.zeros(x.size(0), device=x.device) # (B,)
-        gamma_values = []
-        if self.adv:
 
+        adv_fm_loss_per_sample = torch.zeros(x.size(0), device=x.device)  # (B,)
+        gamma_values = []
+
+        if self.adv:
             # Freeze D
             self.discriminator.requires_grad_(False)
 
@@ -139,47 +140,29 @@ class VAEPlus(BetaVAE):
 
             # Unfreeze D
             self.discriminator.requires_grad_(True)
-
-            # assume each f in feats_real has shape (B, C, H, W)
-            real_layer_norms = [
-                f.flatten(start_dim=1).norm(dim=1).mean()   # tensor scalar
-                for f in feats_real
-            ]
-            fake_layer_norms = [
-                f.flatten(start_dim=1).norm(dim=1).mean()
-                for f in feats_fake
-            ]
-
-            # Stack layer-norms and average across layers
-            feat_norm_real = torch.stack(real_layer_norms).mean()  # tensor scalar
-            feat_norm_fake = torch.stack(fake_layer_norms).mean()
-
-            # (Optional) Convert to Python floats for logging:
-            feat_norm_real = feat_norm_real.item()
-            feat_norm_fake = feat_norm_fake.item()
             
             for i, (real, fake) in enumerate(zip(feats_real, feats_fake)):
                 g = self.gamma(i)
                 gamma_values.append(g)
                 # Per-sample feature loss
                 mse = F.mse_loss(real, fake, reduction='none')  # (B, C, H, W)
-                mse = mse.view(x.size(0), -1).sum(dim=1)             # (B,)
+                mse = 0.5 * mse.view(x.size(0), -1).sum(dim=1)  # (B,)
                 
-                # Apply gamma BEFORE reducing across batch
+                # Apply gamma
                 adv_fm_loss_per_sample += g * mse                    # scaler + (B,) -> (B,) + (B,) -sum-> (B,)
 
             adv_fm_loss = adv_fm_loss_per_sample.mean()              # mean over batch (B,) -mean-> scalar
 
         total_loss = recon_loss + self.beta * kl_loss + adv_fm_loss
 
-        return total_loss, recon_loss, kl_loss, adv_fm_loss, gamma_values, feat_norm_real, feat_norm_fake
+        return total_loss, recon_loss, kl_loss, adv_fm_loss, gamma_values
 
     def loss_discriminator(self, x_recon, x):
         real_logits, _ = self.discriminator(x)
         fake_logits, _ = self.discriminator(x_recon.detach())
 
         bce = F.binary_cross_entropy_with_logits
-        target_real = torch.ones_like(real_logits) # Label for real images = 1
+        target_real = torch.ones_like(real_logits)  # Label for real images = 1
         target_fake = torch.zeros_like(fake_logits) # Label for fake images = 0
 
         loss_real = bce(real_logits, target_real)

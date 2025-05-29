@@ -1,10 +1,9 @@
 # src/train.py
 import os
-import time
+from datetime import datetime
 
 import torch
 import torch.optim as optim
-import numpy as np
 from tqdm import tqdm
 
 from omegaconf import DictConfig, OmegaConf
@@ -15,7 +14,6 @@ from vae_model import VAE, BetaVAE, VAEPlus
 from data_processing import load_data
 
 from torch.nn.utils import clip_grad_norm_
-import torch.nn as nn
 
 # Helpers from your original script:
 def validate_model(model, val_loader, device):
@@ -33,15 +31,6 @@ def validate_model(model, val_loader, device):
             val_kld_loss += ret[2].item()
     return val_loss / len(val_loader), val_recon_loss / len(val_loader), val_kld_loss / len(val_loader)
 
-def get_gradients(model, mu, logvar):
-    enc_grads = [p.grad.detach().abs().mean() for p in model.encoder.parameters() if p.grad is not None]
-    grad_enc = torch.stack(enc_grads).mean().item() if enc_grads else 0.0
-    grad_mu = mu.grad.detach().abs().mean().item()     if mu.grad     is not None else 0.0
-    grad_logvar = logvar.grad.detach().abs().mean().item() if logvar.grad is not None else 0.0
-    dec_grads = [p.grad.detach().abs().mean() for p in model.decoder.parameters() if p.grad is not None]
-    grad_dec = torch.stack(dec_grads).mean().item() if dec_grads else 0.0
-    return grad_enc, grad_mu, grad_logvar, grad_dec
-
 # Save model checkpoint
 def save_checkpoint(model, optimizer, epoch, train_loss, val_loss, cfg):
     checkpoint = {
@@ -53,9 +42,11 @@ def save_checkpoint(model, optimizer, epoch, train_loss, val_loss, cfg):
         'val_loss': val_loss,
         'config': OmegaConf.to_container(cfg, resolve=True)
     }
+
     model_save_path = f"experiments/models/vae_checkpoint_{START_TIME}/epoch_{epoch+1}.pth"
     os.makedirs(os.path.dirname(model_save_path), exist_ok=True)
     torch.save(checkpoint, model_save_path)
+
     # Upload checkpoint to W&B
     if epoch == cfg.train.epochs - 1:
         artifact = wandb.Artifact('vae_checkpoint', type='model')
@@ -64,36 +55,25 @@ def save_checkpoint(model, optimizer, epoch, train_loss, val_loss, cfg):
         wandb.finish()
     
     print(f"Model checkpoint saved at {model_save_path}")
+
 # Initialize model based on config
 def initialize_model(cfg, device):
-    name = cfg.model.name.lower()
-    if name in ("vae",):
-        return VAE(cfg.model.input_channels, cfg.model.latent_dim).to(device), None
-    elif name in ("beta_vae", "betavae", "beta-vae"):
-        return BetaVAE(cfg.model.input_channels, cfg.model.latent_dim, cfg.model.beta).to(device), None
-    elif name in ("vae_plus", "vae-plus", "vae+"):
-        model = VAEPlus(
-            cfg.model.input_channels,
-            cfg.model.latent_dim,
-            cfg.model.beta,
-            cfg.model.adv_schedule_slope
-        ).to(device)
+    name = cfg.model.name
+    if name in ("VAE"):
+        return VAE(cfg.model.input_channels, cfg.model.latent_dim).to(device)
+    elif name in ("Beta_VAE"):
+        return BetaVAE(cfg.model.input_channels, cfg.model.latent_dim, cfg.model.beta).to(device)
+    elif name in ("VAE+"):
+        model = VAEPlus(cfg.model.input_channels, cfg.model.latent_dim, cfg.model.beta, cfg.model.adv_schedule_slope).to(device)
         return model
     else:
         raise ValueError(f"Model type {cfg.model.name} not recognized")
 
-START_TIME = int(time.time())
+START_TIME = datetime.now().strftime("%d-%m-%Y_%H-%M")
 
 @hydra.main(version_base=None, config_path="../configs", config_name="config")
 def train_model(cfg: DictConfig):
-    # # restore cwd so data paths resolve exactly as before
-    # os.chdir(get_original_cwd())
-    # print(f"Working dir restored to {os.getcwd()}\n")
     print(OmegaConf.to_yaml(cfg))
-
-    # reproducibility
-    torch.manual_seed(0)
-    np.random.seed(0)
 
     # wandb init
     wandb.init(project=cfg.project.name, config=OmegaConf.to_container(cfg, resolve=True))
@@ -104,16 +84,12 @@ def train_model(cfg: DictConfig):
     if device.type == 'cuda':
         print(f"GPU: {torch.cuda.get_device_name(0)}")
 
-    # data
+    # Load data
     train_loader = load_data(cfg, split="train")
     val_loader   = load_data(cfg, split="val")
 
-    steps_per_epoch = len(train_loader)
-    cfg.model.adv_schedule_slope = steps_per_epoch * 2 
-    print(cfg.model.adv_schedule_slope)
-    # model + optimizers
+    # Initialize model with configuration
     model = initialize_model(cfg, device)
-
 
     vae_params = (
         list(model.encoder.parameters()) +
@@ -123,22 +99,17 @@ def train_model(cfg: DictConfig):
         list(model.decoder.parameters())
     )
 
+    # Initialize optimizers
     vae_optimizer = optim.Adam(vae_params, lr=cfg.train.learning_rate)
-    
     if model.adv:
         disc_optimizer = optim.SGD(model.discriminator.parameters(), lr=cfg.train.discriminator_lr, momentum=0.9)
 
-    # training
+    # Training
     for epoch in range(cfg.train.epochs):
         model.train()
         train_loss = 0.0
         total_recon_loss = 0.0
         total_kld_loss = 0.0
-
-        # if epoch >= cfg.train.epochs -2:
-        #     S = 5
-        # else:
-        #     S = 1
 
         for x_batch, _ in tqdm(train_loader, desc=f"Epoch {epoch+1}/{cfg.train.epochs}", leave=False):
             x_batch = x_batch.to(device).float()
@@ -157,21 +128,16 @@ def train_model(cfg: DictConfig):
                 disc_optimizer.step()
 
                 model.t += 1
-
-            # 2) VAE step
-            mu.retain_grad(); logvar.retain_grad()
         
             if model.adv:
-                total_loss, recon_loss, kld_loss, feat_loss, gammas, feat_norm_real, feat_norm_fake = model.loss_function(recon, batch1, mu, logvar)
+                total_loss, recon_loss, kld_loss, feat_loss, gammas = model.loss_function(recon, batch1, mu, logvar)
             else:
                 total_loss, recon_loss, kld_loss, _, _ = model.loss_function(recon, x_batch, mu, logvar)
-                feat_norm_real, feat_norm_fake = 0.0, 0.0
 
             vae_optimizer.zero_grad()
             total_loss.backward()
             clip_grad_norm_(vae_params, max_norm=1.0)
 
-            grad_enc, grad_mu, grad_logvar, grad_dec = get_gradients(model, mu, logvar)
             vae_optimizer.step()
 
             train_loss += total_loss.item()
@@ -184,13 +150,7 @@ def train_model(cfg: DictConfig):
                 "batch_loss":         total_loss.item(),
                 "reconstruction_loss": recon_loss.item(),
                 "kl_divergence":       kld_loss.item(),
-                "adv_feature_loss":    feat_loss.item(),
-                "grad_encoder":        grad_enc,
-                "grad_mu":             grad_mu,
-                "grad_logvar":         grad_logvar,
-                "grad_decoder":        grad_dec,
-                "feat_norm_real":      feat_norm_real,
-                "feat_norm_fake":      feat_norm_fake
+                "adv_feature_loss":    feat_loss.item()
             }
 
             if model.adv:
@@ -200,7 +160,8 @@ def train_model(cfg: DictConfig):
                 log_dict.update(gamma_dict)
 
             wandb.log(log_dict)
-        # --- end of epoch logs ---
+            
+        # epoch‐level logging
         avg_train_loss = train_loss / len(train_loader)
         avg_val_loss, avg_val_recon_loss, avg_val_kld_loss = validate_model(model, val_loader, device)
 
