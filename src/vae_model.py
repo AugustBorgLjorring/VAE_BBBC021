@@ -7,12 +7,13 @@ class VAE(nn.Module):
     def __init__(self, in_channels=3, latent_dim=256):
         super().__init__()
         # Encoder: 4 conv layers
+        # Input pictures are (B, C, H, W) = (B, 3, 68, 68)
         self.encoder = nn.Sequential(
-            nn.Conv2d(in_channels, 32, kernel_size=5, stride=2, padding=2), # # 68x68 -> 34x34
+            nn.Conv2d(in_channels, 32, kernel_size=5, stride=2, padding=2), # 68x68 -> 34x34
             nn.LeakyReLU(0.01),
-            nn.Conv2d(32, 32, kernel_size=5, stride=2, padding=2), # 34x34 -> 17x17
+            nn.Conv2d(32, 32, kernel_size=5, stride=2, padding=2),          # 34x34 -> 17x17
             nn.LeakyReLU(0.01),
-            nn.Conv2d(32, 32, kernel_size=5, stride=2, padding=2), # 17x17 -> 9x9
+            nn.Conv2d(32, 32, kernel_size=5, stride=2, padding=2),          # 17x17 -> 9x9
             nn.LeakyReLU(0.01),
             nn.Conv2d(32, 32, kernel_size=5, stride=2, padding=2), # 9x9 -> 5x5
             nn.LeakyReLU(0.01),
@@ -35,9 +36,9 @@ class VAE(nn.Module):
         )
 
     def encode(self, x):
-        h = self.encoder(x)
-        mu     = self.fc_mu(h)
-        logvar = torch.clamp(self.fc_logvar(h), -10.0, 10.0)
+        h = self.encoder(x)    # (B, 32*5*5)
+        mu     = self.fc_mu(h) # (B, latent_dim)
+        logvar = torch.clamp(self.fc_logvar(h), -10.0, 10.0) # (B, latent_dim)
         return mu, logvar
 
     def reparameterize(self, mu, logvar):
@@ -51,19 +52,22 @@ class VAE(nn.Module):
     def forward(self, x):
         mu, logvar = self.encode(x)
         z = self.reparameterize(mu, logvar)
-        return self.decode(z), mu, logvar
+        x_recon = self.decode(z)
+        return x_recon, mu, logvar
 
     def loss_function(self, x_recon, x, mu, logvar):
         # Reconstruction: multi-var Normal with sigma=1
         mse_term = 0.5 * ((x_recon - x) ** 2).view(x.size(0), -1).sum(dim=1)  # sum over C,H,W, (B,C,H,W) -flatten-> (B, D) -sum-> (B,)
         D = x[0].numel()
         const = 0.5 * D * math.log(2 * math.pi)  # log constant per sample
-        recon_loss = (mse_term + const).mean()  # mean over batch (B,) + scaler -> (B,) + (B,) -mean-> scalar
+        recon_loss = (mse_term + const).mean()   # mean over batch (B,) + scaler -> (B,) + (B,) -mean-> scalar
 
         # KL divergence between q(z|x) and N(0, I)
         kl_per_sample = 0.5 * torch.sum(mu.pow(2) + logvar.exp() - 1 - logvar, dim=1) # sum over latent dim (B, D) -sum-> (B,)
         kl_loss = kl_per_sample.mean() # mean over batch (B,) -mean-> scalar
+
         total_loss = recon_loss + kl_loss
+
         return total_loss, recon_loss, kl_loss, 0, 0 # mean over batch (scalar, scalar), last two are placeholders for compatibility
 
 class BetaVAE(VAE):
@@ -73,29 +77,29 @@ class BetaVAE(VAE):
 
     def loss_function(self, x_recon, x, mu, logvar):
         _, recon_loss, kl_loss, _, _ = super().loss_function(x_recon, x, mu, logvar)
-        total_loss = recon_loss + self.beta * kl_loss
+        total_loss = recon_loss + self.beta * kl_loss # beta scaling of KL divergence
         return total_loss, recon_loss, kl_loss, 0, 0  # last two are placeholders for compatibility
 
 class VAEPlus(BetaVAE):
-    def __init__(self, in_channels=3, latent_dim=256,
-                 beta=1.0, T=1, use_adverserial=True):
+    def __init__(self, in_channels=3, latent_dim=256, beta=1.0, T=1, use_adverserial=True):
         super().__init__(in_channels, latent_dim, beta)
         self.T = T
         self.t = 0
         self.adv = use_adverserial
         if self.adv:
             self.discriminator = Discriminator(in_channels)
-      
+    
+    # Increment each feat layers gamma value every t steps (t batches)
     def gamma(self, i: int):
         return min(max((self.t/self.T) - i, 0.0), 1.0) # From Lafarge2019
 
     def loss_function(self, x_recon, x, mu, logvar):
         _, recon_loss, kl_loss, _, _ = super().loss_function(x_recon, x, mu, logvar)
 
-        adv_fm_loss_per_sample = torch.zeros(x.size(0), device=x.device)  # (B,)
-        gamma_values = []
-
         if self.adv:
+            adv_fm_loss_per_sample = torch.zeros(x.size(0), device=x.device)  # (B,)
+            gamma_values = []
+
             # Freeze D
             self.discriminator.requires_grad_(False)
 
@@ -117,11 +121,19 @@ class VAEPlus(BetaVAE):
 
             adv_fm_loss = adv_fm_loss_per_sample.mean()              # mean over batch (B,) -mean-> scalar
 
-        total_loss = recon_loss + self.beta * kl_loss + adv_fm_loss
+            total_loss = recon_loss + self.beta * kl_loss + adv_fm_loss
+        else:
+            # Return the standard VAE loss
+            adv_fm_loss = 0
+            gamma_values = []
+
+            total_loss = recon_loss + self.beta * kl_loss
 
         return total_loss, recon_loss, kl_loss, adv_fm_loss, gamma_values
 
+
     def loss_discriminator(self, x_recon, x):
+        # Discriminator loss: binary cross-entropy between real and fake images
         real_logits, _ = self.discriminator(x)
         fake_logits, _ = self.discriminator(x_recon.detach())
 
@@ -132,6 +144,7 @@ class VAEPlus(BetaVAE):
         loss_real = bce(real_logits, target_real)
         loss_fake = bce(fake_logits, target_fake)
         return loss_real + loss_fake
+
 
 # Based on: Lafarge et al., "Capturing Single-Cell Phenotypic Variation via Unsupervised Representation Learning" (2019)
 class Discriminator(nn.Module):

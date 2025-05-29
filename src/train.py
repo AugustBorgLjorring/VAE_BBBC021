@@ -1,4 +1,3 @@
-# src/train.py
 import os
 from datetime import datetime
 
@@ -15,7 +14,7 @@ from data_processing import load_data
 
 from torch.nn.utils import clip_grad_norm_
 
-# Helpers from your original script:
+# Validate model on validation set
 def validate_model(model, val_loader, device):
     model.eval()
     val_loss = 0.0
@@ -25,10 +24,10 @@ def validate_model(model, val_loader, device):
         for x_batch, _ in val_loader:
             x = x_batch.to(device).float()
             recon, mu, logvar = model(x)
-            ret = model.loss_function(recon, x, mu, logvar)
-            val_loss += ret[0].item()  
-            val_recon_loss += ret[1].item()
-            val_kld_loss += ret[2].item()
+            losses = model.loss_function(recon, x, mu, logvar)
+            val_loss += losses[0].item()
+            val_recon_loss += losses[1].item()
+            val_kld_loss += losses[2].item()
     return val_loss / len(val_loader), val_recon_loss / len(val_loader), val_kld_loss / len(val_loader)
 
 # Save model checkpoint
@@ -75,10 +74,10 @@ START_TIME = datetime.now().strftime("%d-%m-%Y_%H-%M")
 def train_model(cfg: DictConfig):
     print(OmegaConf.to_yaml(cfg))
 
-    # wandb init
+    # Wandb init
     wandb.init(project=cfg.project.name, config=OmegaConf.to_container(cfg, resolve=True))
 
-    # device
+    # Device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
     if device.type == 'cuda':
@@ -112,31 +111,42 @@ def train_model(cfg: DictConfig):
         total_kld_loss = 0.0
 
         for x_batch, _ in tqdm(train_loader, desc=f"Epoch {epoch+1}/{cfg.train.epochs}", leave=False):
-            x_batch = x_batch.to(device).float()
-            half = x_batch.size(0) // 2
-            batch1 = x_batch[:half]
-            batch2 = x_batch[half:]
+            x_batch = x_batch.to(device)
 
-            recon, mu, logvar = model(batch1)
+            if not model.adv:
+                recon, mu, logvar = model(x_batch)
+            else:
+                # Discriminator
+                # Split batch into two halves for adversarial training
+                half = x_batch.size(0) // 2
+                batch1 = x_batch[:half]
+                batch2 = x_batch[half:]
 
-            # 1) Discriminator step
-            if model.adv:
+                recon, mu, logvar = model(batch1)
+
+                # L = BCE loss of real (batch 2) and fake images
                 d_loss = model.loss_discriminator(recon, batch2)
                 disc_optimizer.zero_grad()
                 d_loss.backward()
 
+                # Clip gradients for discriminator to prevent exploding gradients
                 clip_grad_norm_(model.discriminator.parameters(), max_norm=1.0)
                 disc_optimizer.step()
 
                 model.t += 1
-        
-            if model.adv:
-                total_loss, recon_loss, kld_loss, feat_loss, gammas = model.loss_function(recon, batch1, mu, logvar)
-            else:
+
+            # VAE loss
+            if not model.adv:
+                # L = recon_loss + kld_loss
                 total_loss, recon_loss, kld_loss, _, _ = model.loss_function(recon, x_batch, mu, logvar)
+            else:
+                # L = recon_loss + kld_loss + adv_feature_loss
+                total_loss, recon_loss, kld_loss, feat_loss, gammas = model.loss_function(recon, batch1, mu, logvar)
 
             vae_optimizer.zero_grad()
             total_loss.backward()
+
+            # Clip gradients for VAE parameters to prevent exploding gradients
             clip_grad_norm_(vae_params, max_norm=1.0)
 
             vae_optimizer.step()
@@ -154,19 +164,22 @@ def train_model(cfg: DictConfig):
                 "adv_feature_loss":    feat_loss.item()
             }
 
+            # Log gamma values if applicable
             if model.adv:
                 log_dict["batch_disc_loss"] = d_loss.item()
-
                 gamma_dict = {f"gamma/layer_{i}": float(g) for i, g in enumerate(gammas)}
                 log_dict.update(gamma_dict)
 
+            # Log to wandb
             wandb.log(log_dict)
             
-        # epoch‐level logging
+        # Calculate average epoch loss
         avg_train_loss = train_loss / len(train_loader)
+
+        # Validate model
         avg_val_loss, avg_val_recon_loss, avg_val_kld_loss = validate_model(model, val_loader, device)
 
-        # print to terminal
+        # Print epoch results
         print(f"Epoch [{epoch+1}/{cfg.train.epochs}] Train Loss: {avg_train_loss:.4f}, Val Loss: {avg_val_loss:.4f}")
 
         # W&B epoch‐level logging
@@ -180,7 +193,7 @@ def train_model(cfg: DictConfig):
             "epoch_val_kld_loss": avg_val_kld_loss
         })
 
-            # Save model checkpoint
+        # Save model checkpoint every 5 epochs and at the end
         if (epoch + 1) % 5 == 0 or epoch == cfg.train.epochs - 1:
             save_checkpoint(model, vae_optimizer, epoch, avg_train_loss, avg_val_loss, cfg)
 
