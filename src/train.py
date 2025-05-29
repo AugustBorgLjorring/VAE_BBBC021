@@ -10,7 +10,7 @@ import hydra
 import wandb
 
 from vae_model import VAESmall, VAEMedium, VAELarge, BetaVAE, VAEPlus
-from data_loading import load_data
+from data_loading_well import load_data_by_well
 
 from torch.nn.utils import clip_grad_norm_
 
@@ -88,8 +88,8 @@ def train_model(cfg: DictConfig):
         print(f"GPU: {torch.cuda.get_device_name(0)}")
 
     # Load data
-    train_loader = load_data(cfg, split="train")
-    val_loader   = load_data(cfg, split="val")
+    train_loader = load_data_by_well(cfg, split="train")
+    val_loader   = load_data_by_well(cfg, split="val")
 
     # Initialize model with configuration
     model = initialize_model(cfg, device)

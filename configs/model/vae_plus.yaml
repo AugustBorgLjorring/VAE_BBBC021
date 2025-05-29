@@ -1,5 +1,5 @@
 name: "VAE+"
 input_channels: 3
 latent_dim: 256
-adv_schedule_slope: 3004
+adv_schedule_slope: 2984
 beta: 1.0
