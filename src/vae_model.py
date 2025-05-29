@@ -40,18 +40,11 @@ class VAE(nn.Module):
         log_var = self.fc_var(x)
         return mu, log_var
 
-    # # Original reparameterization trick with single sample
-    # def reparameterize(self, mu, log_var):
-    #     std = torch.exp(0.5 * log_var)
-    #     eps = torch.randn_like(std)
-    #     return mu + eps * std
-    
-    # Reparameterization trick with multiple samples
-    def reparameterize(self, mu, log_var, S=1):
-        std = torch.exp(0.5 * log_var)            # (B, D)
-        B, D = mu.shape
-        eps = torch.randn(S, B, D).to(mu.device)  # (S, B, D)
-        return mu.unsqueeze(0) + eps * std.unsqueeze(0)
+    # Reparameterization trick
+    def reparameterize(self, mu, log_var):
+        std = torch.exp(0.5 * log_var)
+        eps = torch.randn_like(std)
+        return mu + eps * std
 
     def decode(self, z):
         x = self.decoder_input(z)
@@ -59,49 +52,28 @@ class VAE(nn.Module):
         x = self.decoder(x)
         return x
 
-    # # Original forward pass with single sample
-    # def forward(self, x):
-    #     mu, log_var = self.encode(x)
-    #     z = self.reparameterize(mu, log_var)
-    #     x_recon = self.decode(z)
-    #     return x_recon, mu, log_var
-
-    # Forward pass with multiple samples
-    def forward(self, x, S=1):
+    # Forward pass
+    def forward(self, x):
         mu, log_var = self.encode(x)
-        z = self.reparameterize(mu, log_var, S)       # (S, B, D)
-        z_flat = z.view(S * mu.size(0), -1)           # (S*B, D)
-        x_flat = self.decode(z_flat)                  # (S*B, C, H, W)
-        # reshape back to (S, B, C, H, W)
-        C, H, W = x_flat.shape[1:]
-        x_recon = x_flat.view(S, mu.size(0), C, H, W) # (S, B, C, H, W)
-
+        z = self.reparameterize(mu, log_var) # (B, D)
+        x_recon = self.decode(z)             # (B, C, H, W)
         return x_recon, mu, log_var
 
-    # # Original loss function with single sample
-    # def loss_function(self, recon_x, x, mu, log_var):
-    #     B = x.size(0)
-    #     D = x.size(1) * x.size(2) * x.size(3) 
-    #     sigma = 1
-    #     recon_loss = 1/(2*sigma**2) * F.mse_loss(recon_x, x, reduction='sum') + 1/(2*sigma**2) * D * B * math.log(2 * math.pi)
-    #     kld_loss = -0.5 * torch.sum(1 + log_var - mu.pow(2) - log_var.exp())
-    #     loss = recon_loss + kld_loss
-    #     return loss, recon_loss, kld_loss
+    # Loss function
+    def loss_function(self, x_recon, x, mu, logvar):
+        # Reconstruction: multi-var Normal with sigma=1
+        mse_term = 0.5 * ((x_recon - x) ** 2).view(x.size(0), -1).sum(dim=1)  # sum over C,H,W, (B,C,H,W) -flatten-> (B, D) -sum-> (B,)
+        D = x[0].numel()
+        const = 0.5 * D * math.log(2 * math.pi)  # log constant per sample
+        recon_loss = (mse_term + const).mean()   # mean over batch (B,) + scaler -> (B,) + (B,) -mean-> scalar
 
-    # Loss function with multiple monte carlo samples
-    def loss_function(self, x_recon, x, mu, log_var):
-        S, B, C, H, W = x_recon.shape
-        D = C * H * W
-        sigma = 1
-        # Reconstruction term: average over S sum over pixels then avg over samples
-        squared_error  = F.mse_loss(x_recon, x.unsqueeze(0).expand_as(x_recon), reduction='none').view(S, B, -1).sum(-1)     # (S, B) per-sample MSE
-        mse_term = (1 / (2 * sigma ** 2)) * squared_error.mean(0)  # (B,)
-        constant = (D / 2) * math.log(2 * math.pi * sigma ** 2)
-        recon_loss = (mse_term + constant).mean()  # (B,)
-        # KL divergence term: average over samples
-        kld_loss = -0.5 * torch.sum(1 + log_var - mu.pow(2) - log_var.exp(), dim=1).mean()  # (B,)
-        loss = recon_loss + kld_loss
-        return loss, recon_loss, kld_loss
+        # KL divergence between q(z|x) and N(0, I)
+        kl_per_sample = - 0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp(), dim=1) # sum over latent dim (B, D) -sum-> (B,)
+        kl_loss = kl_per_sample.mean() # mean over batch (B,) -mean-> scalar
+
+        total_loss = recon_loss + kl_loss
+
+        return total_loss, recon_loss, kl_loss, 0, 0 # mean over batch (scalar, scalar), last two are placeholders for compatibility
 
     def sample(self, num_samples, current_device):
         z = torch.randn(num_samples, self.fc_mu.out_features).to(current_device)
