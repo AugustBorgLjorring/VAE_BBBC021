@@ -135,7 +135,7 @@ class VAELarge(VAEMedium):
             nn.Sigmoid()
         )
 
-class BetaVAE(VAELarge):
+class BetaVAE(VAEMedium):
     def __init__(self, in_channels=3, latent_dim=256, beta=1.0):
         super().__init__(in_channels, latent_dim)
         self.beta = beta
