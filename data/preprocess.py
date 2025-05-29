@@ -39,12 +39,20 @@ output_path = 'D:/BBBC021/BBBC021_cleaned_preprocessed.h5'
 def crop_image(image: np.ndarray, pix: int = 2) -> np.ndarray:
     return image[pix:-pix, pix:-pix, :] if image.shape == (68, 68, 3) else None
 
-def normalize_image(image: np.ndarray) -> np.ndarray:
-    image = image.astype(np.float32)
-    min_vals = image.min(axis=(0, 1), keepdims=True)
-    max_vals = image.max(axis=(0, 1), keepdims=True)
-    range_vals = np.maximum(max_vals - min_vals, 1e-5)
-    return (image - min_vals) / range_vals
+def normalize_image(image: np.ndarray, method: str) -> np.ndarray:
+    if method == "min_max":
+        image = image.astype(np.float32)
+        min_vals = image.min(axis=(0, 1), keepdims=True)
+        max_vals = image.max(axis=(0, 1), keepdims=True)
+        range_vals = np.maximum(max_vals - min_vals, 1e-5)
+        return (image - min_vals) / range_vals
+    elif method == "max":
+        image = image.astype(np.float32)
+        max_vals = image.max(axis=(0, 1), keepdims=True)  # shape (1, 1, C)
+        max_vals = np.maximum(max_vals, 1e-5)  # prevent division by 0
+        return image / max_vals
+    else:
+        raise ValueError(f"Unknown normalization method: {method}")
 
 def is_noisy(name: str, bad_ids: set) -> bool:
     prefix = '_'.join(name.split('_')[:-1])  # Remove the last `_###` part
@@ -56,7 +64,11 @@ with h5py.File(input_path, 'r') as in_f, h5py.File(output_path, 'w') as out_f:
     raw_names = in_f['image_names']
     total = len(raw_images)
 
-    img_shape = (3, 64, 64)
+    img_h = raw_images.shape[1]  # Height of the images
+    img_w = raw_images.shape[2]  # Width of the images
+    crop_pixels = 0  # Number of pixels to crop from each side
+
+    img_shape = (3, img_h - 2 * crop_pixels, img_w - 2 * crop_pixels)  # (C, H, W)
     img_dtype = np.float32
 
     # Create resizable datasets in output file
@@ -85,11 +97,13 @@ with h5py.File(input_path, 'r') as in_f, h5py.File(output_path, 'w') as out_f:
             continue
 
         img = raw_images[i]
-        img = crop_image(img)
-        if img is None:
-            continue
+        if crop_pixels > 0:
+            img = crop_image(img, crop_pixels)
 
-        img = normalize_image(img)
+        if img is None:
+            raise ValueError(f"Image {name} has unexpected shape: {raw_images[i].shape}")
+
+        img = normalize_image(img, "min_max") # or "max"
         img = np.transpose(img, (2, 0, 1))
 
         # Save to output dataset
