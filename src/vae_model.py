@@ -38,7 +38,7 @@ class VAEMedium(nn.Module):
     def encode(self, x):
         h = self.encoder(x)    # (B, 32*5*5)
         mu     = self.fc_mu(h) # (B, latent_dim)
-        logvar = torch.clamp(self.fc_logvar(h), -10.0, 10.0) # (B, latent_dim)
+        logvar = torch.clamp(self.fc_logvar(h), -6.0, 3.0) # (B, latent_dim)
         return mu, logvar
 
     # Reparameterization trick

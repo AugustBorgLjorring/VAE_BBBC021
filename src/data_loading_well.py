@@ -78,68 +78,87 @@ class RandomEightWay:
 
 def load_data_by_well(cfg: DictConfig, split: str = 'train', seed: int = 42) -> DataLoader:
     """
-    Splits images by well:
-      - ~cfg.data.train_ratio of wells → train
-      - ~cfg.data.val_ratio of wells   → val
-      - remainder                       → test
+    Splits wells by compound:
+      1) Seed val/test/train with one well per compound
+      2) Randomly fill val/test until their targets (cfg.data.val_ratio/test_ratio)
+      3) Rest of wells → train
     """
     # reproducibility
     torch.manual_seed(seed)
     random.seed(seed)
 
-    # Define transforms only for training
-    transform = None
-    if split == "train":
-        transform = transforms.Compose([RandomEightWay()])
-
-    # full image dataset
+    # 1) Build dataset & transform
+    transform = transforms.Compose([RandomEightWay()]) if split == "train" else None
     dataset = BBBC021Dataset(cfg.data.train_path, transform=transform)
 
-    # map each well → list of image-indices
-    wells = _get_wells(cfg)  
+    # 2) Read metadata: well → compound
+    with h5py.File(cfg.data.metadata_path, 'r') as f:
+        wells_meta     = [w.decode('utf-8') for w in f['metadata_well'][:]]
+        compounds_meta = [c.decode('utf-8') for c in f['metadata_compound'][:]]
 
-    print(f"Loading {split} split")
-    print(f"Loaded {len(wells)} wells from {cfg.data.train_path}")
+    compound_to_wells = defaultdict(list)
+    for well, comp in zip(wells_meta, compounds_meta):
+        compound_to_wells[comp].append(well)
 
+    # 3) Prepare mutable copy and tracking
+    comp_wells = {c: list(ws) for c, ws in compound_to_wells.items()}
+    split_wells = {'train': [], 'val': [], 'test': []}
+    val_count = test_count = 0
+    val_full = test_full = False
+
+    total_wells = sum(len(ws) for ws in compound_to_wells.values())
+    val_target  = int(round(cfg.data.val_ratio  * total_wells))
+    test_target = int(round(cfg.data.test_ratio * total_wells))
+
+    # 4) Seeding step: one well per compound in each split
+    random.seed(0)
+    for comp in random.sample(list(comp_wells), len(comp_wells)):
+        wells = comp_wells[comp]
+        random.shuffle(wells)
+        if wells:
+            split_wells['val'].append(wells.pop(0))
+            val_count += 1
+        if wells:
+            split_wells['test'].append(wells.pop(0))
+            test_count += 1
+        if wells:
+            split_wells['train'].append(wells.pop(0))
+
+    # 5) Collect & shuffle remaining wells
+    remaining = [w for ws in comp_wells.values() for w in ws]
+    random.shuffle(remaining)
+
+    # 6) Fill val/test to target, rest to train
+    for well in remaining:
+        if not val_full and val_count < val_target:
+            split_wells['val'].append(well)
+            val_count += 1
+            if val_count >= val_target:
+                val_full = True
+        elif not test_full and test_count < test_target:
+            split_wells['test'].append(well)
+            test_count += 1
+            if test_count >= test_target:
+                test_full = True
+        else:
+            split_wells['train'].append(well)
+
+    # 7) Map wells → dataset indices
+    wells = _get_wells(cfg)
     well2idx = defaultdict(list)
     for idx, w in enumerate(wells):
         well2idx[w].append(idx)
 
-    # shuffle and split wells
-    all_wells = list(well2idx.keys())
-    random.shuffle(all_wells)
-    N = len(all_wells)
-    n_train = int(cfg.data.train_ratio * N)
-    n_val   = int(cfg.data.val_ratio * N)
-    # leftover wells → test
-    n_test  = N - n_train - n_val
+    indices = []
+    for w in split_wells[split]:
+        indices.extend(well2idx[w])
 
-    print(f"Splitting wells: train {n_train} ({n_train/N:.2%}), val {n_val} ({n_val/N:.2%}), test {n_test} ({n_test/N:.2%})")
+    print(f"Final counts — Train: {len(split_wells['train'])}, Val: {len(split_wells['val'])}, Test: {len(split_wells['test'])}")
 
-    wells_train = all_wells[:n_train]
-    wells_val   = all_wells[n_train:n_train + n_val]
-    wells_test  = all_wells[n_train + n_val:]
-
-    # flatten indices
-    idx_train = [i for w in wells_train for i in well2idx[w]]
-    idx_val   = [i for w in wells_val   for i in well2idx[w]]
-    idx_test  = [i for w in wells_test  for i in well2idx[w]]
-
-    print(f"Size of splits: train {len(idx_train)} ({len(idx_train)/len(dataset):.2%}), val {len(idx_val)} ({len(idx_val)/len(dataset):.2%}), test {len(idx_test)} ({len(idx_test)/len(dataset):.2%})")
-
-    subsets = {
-        'train': Subset(dataset, idx_train),
-        'val':   Subset(dataset, idx_val),
-        'test':  Subset(dataset, idx_test),
-        'all':   dataset
-    }
-
-    chosen = subsets.get(split)
-    if chosen is None:
-        raise ValueError(f"Invalid split '{split}'. Choose from train/val/test/all.")
-
-    loader = DataLoader(
-        chosen,
+    # 8) Return DataLoader
+    subset = Subset(dataset, indices)
+    return DataLoader(
+        subset,
         batch_size=cfg.train.batch_size,
         shuffle=(split == 'train'),
         drop_last=(split == 'train'),
@@ -148,8 +167,6 @@ def load_data_by_well(cfg: DictConfig, split: str = 'train', seed: int = 42) -> 
         prefetch_factor=4,
         num_workers=4
     )
-    return loader
-
 
 def load_metadata(cfg: DictConfig) -> DataLoader:
     """Loads the metadata (well, compound, conc, moa) in the same order."""
