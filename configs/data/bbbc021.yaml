@@ -1,4 +1,4 @@
-train_path: "data/raw/BBBC021_cleaned_preprocessed_68.h5"
+train_path: "data/raw/BBBC021_dataset_cleaned_maxnorm_68.h5"
 metadata_path: "data/raw/metadata_dataset.h5"
 crop_pixels: 0
 train_ratio: 0.8
