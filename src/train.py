@@ -72,7 +72,7 @@ def initialize_model(cfg, device):
     else:
         raise ValueError(f"Model type {cfg.model.name} not recognized")
     
-START_TIME = datetime.now().strftime("%d-%m-%Y_%H-%M")
+START_TIME = datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
 
 @hydra.main(version_base=None, config_path="../configs", config_name="config")
 def train_model(cfg: DictConfig):
