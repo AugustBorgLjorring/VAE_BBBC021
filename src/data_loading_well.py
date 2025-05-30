@@ -59,11 +59,12 @@ class BBBC021Metadata(Dataset):
         return well, comp, conc, moa
 
 
-def _get_wells(cfg: DictConfig):
-    """Load the well ID for every image, in order."""
+def _get_wells_and_compounds(cfg: DictConfig):
+    """Load the well ID and compound for every image, in order."""
     with h5py.File(cfg.data.metadata_path, 'r') as f:
-        wells = [w.decode('utf-8') for w in f['metadata_well'][:]]
-    return wells
+        wells_meta = [w.decode('utf-8') for w in f['metadata_well'][:]]
+        compounds_meta = [c.decode('utf-8') for c in f['metadata_compound'][:]]
+    return wells_meta, compounds_meta
 
 
 class RandomEightWay:
@@ -76,7 +77,7 @@ class RandomEightWay:
         return img
 
 
-def load_data_by_well(cfg: DictConfig, split: str = 'train', seed: int = 42) -> DataLoader:
+def load_data_by_well(cfg: DictConfig, split: str = 'train', seed: int = 1) -> DataLoader:
     """
     Splits wells by compound:
       1) Seed val/test/train with one well per compound
@@ -84,21 +85,18 @@ def load_data_by_well(cfg: DictConfig, split: str = 'train', seed: int = 42) -> 
       3) Rest of wells → train
     """
     # reproducibility
-    torch.manual_seed(seed)
-    random.seed(seed)
-
     # 1) Build dataset & transform
     transform = transforms.Compose([RandomEightWay()]) if split == "train" else None
     dataset = BBBC021Dataset(cfg.data.train_path, transform=transform)
 
     # 2) Read metadata: well → compound
-    with h5py.File(cfg.data.metadata_path, 'r') as f:
-        wells_meta     = [w.decode('utf-8') for w in f['metadata_well'][:]]
-        compounds_meta = [c.decode('utf-8') for c in f['metadata_compound'][:]]
+    wells_meta, compounds_meta = _get_wells_and_compounds(cfg)
 
     compound_to_wells = defaultdict(list)
     for well, comp in zip(wells_meta, compounds_meta):
-        compound_to_wells[comp].append(well)
+        # only append if we haven’t seen this well for this compound yet
+        if well not in compound_to_wells[comp]:
+            compound_to_wells[comp].append(well)
 
     # 3) Prepare mutable copy and tracking
     comp_wells = {c: list(ws) for c, ws in compound_to_wells.items()}
@@ -106,12 +104,12 @@ def load_data_by_well(cfg: DictConfig, split: str = 'train', seed: int = 42) -> 
     val_count = test_count = 0
     val_full = test_full = False
 
-    total_wells = sum(len(ws) for ws in compound_to_wells.values())
+    total_wells = sum(len(ws) for ws in comp_wells.values())
     val_target  = int(round(cfg.data.val_ratio  * total_wells))
     test_target = int(round(cfg.data.test_ratio * total_wells))
 
     # 4) Seeding step: one well per compound in each split
-    random.seed(0)
+    random.seed(seed)
     for comp in random.sample(list(comp_wells), len(comp_wells)):
         wells = comp_wells[comp]
         random.shuffle(wells)
@@ -144,16 +142,16 @@ def load_data_by_well(cfg: DictConfig, split: str = 'train', seed: int = 42) -> 
             split_wells['train'].append(well)
 
     # 7) Map wells → dataset indices
-    wells = _get_wells(cfg)
     well2idx = defaultdict(list)
-    for idx, w in enumerate(wells):
+    for idx, w in enumerate(wells_meta):
         well2idx[w].append(idx)
 
     indices = []
     for w in split_wells[split]:
         indices.extend(well2idx[w])
 
-    print(f"Final counts — Train: {len(split_wells['train'])}, Val: {len(split_wells['val'])}, Test: {len(split_wells['test'])}")
+    print(f"Total wells Train: {len(split_wells['train'])}, Val: {len(split_wells['val'])}, Test: {len(split_wells['test'])}")
+    print(f"Total images in {split}: {len(indices)} ({len(indices) / len(dataset):.2%} of total)")
 
     # 8) Return DataLoader
     subset = Subset(dataset, indices)
