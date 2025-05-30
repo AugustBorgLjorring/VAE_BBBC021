@@ -146,7 +146,7 @@ def load_data_by_well(cfg: DictConfig, split: str = 'train', seed: int = 42) -> 
         pin_memory=True,
         persistent_workers=True,
         prefetch_factor=4,
-        num_workers=7
+        num_workers=4
     )
     return loader
 
