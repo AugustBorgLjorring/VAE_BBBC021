@@ -104,7 +104,9 @@ def train_model(cfg: DictConfig):
 
     # Initialize optimizers
     vae_optimizer = optim.Adam(vae_params, lr=cfg.train.learning_rate)
-    if model.adv:
+    if model.adv is None or not model.adv:
+        pass
+    else:
         disc_optimizer = optim.SGD(model.discriminator.parameters(), lr=cfg.train.discriminator_lr, momentum=0.9)
 
     # Training
@@ -169,7 +171,7 @@ def train_model(cfg: DictConfig):
 
             # Log gamma values if applicable
             if model.adv is None or not model.adv:
-                continue
+                pass
             else:
                 log_dict["batch_disc_loss"] = d_loss.item()
                 gamma_dict = {f"gamma/layer_{i}": float(g) for i, g in enumerate(model.gamma_values)}
