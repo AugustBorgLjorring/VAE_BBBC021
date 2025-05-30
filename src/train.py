@@ -117,7 +117,7 @@ def train_model(cfg: DictConfig):
         for x_batch, _ in tqdm(train_loader, desc=f"Epoch {epoch+1}/{cfg.train.epochs}", leave=False):
             x_batch = x_batch.to(device)
 
-            if not model.adv:
+            if model.adv is None or not model.adv:
                 recon, mu, logvar = model(x_batch)
             else:
                 # Discriminator - Split batch into two halves for adversarial training
@@ -139,7 +139,7 @@ def train_model(cfg: DictConfig):
                 model.t += 1
 
             # VAE loss
-            if not model.adv:
+            if model.adv is None or not model.adv:
                 # L = recon_loss + kld_loss
                 total_loss, recon_loss, kld_loss, _ = model.loss_function(recon, x_batch, mu, logvar)
             else:
@@ -168,7 +168,9 @@ def train_model(cfg: DictConfig):
             }
 
             # Log gamma values if applicable
-            if model.adv:
+            if model.adv is None or not model.adv:
+                continue
+            else:
                 log_dict["batch_disc_loss"] = d_loss.item()
                 gamma_dict = {f"gamma/layer_{i}": float(g) for i, g in enumerate(model.gamma_values)}
                 log_dict.update(gamma_dict)
