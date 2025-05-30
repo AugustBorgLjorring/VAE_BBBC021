@@ -104,9 +104,10 @@ def train_model(cfg: DictConfig):
 
     # Initialize optimizers
     vae_optimizer = optim.Adam(vae_params, lr=cfg.train.learning_rate)
-    if model.adv is None or not model.adv:
-        pass
+    if not getattr(model, "adv", False) or not model.adv:
+        use_adv = False
     else:
+        use_adv = True
         disc_optimizer = optim.SGD(model.discriminator.parameters(), lr=cfg.train.discriminator_lr, momentum=0.9)
 
     # Training
@@ -119,7 +120,7 @@ def train_model(cfg: DictConfig):
         for x_batch, _ in tqdm(train_loader, desc=f"Epoch {epoch+1}/{cfg.train.epochs}", leave=False):
             x_batch = x_batch.to(device)
 
-            if model.adv is None or not model.adv:
+            if not use_adv:
                 recon, mu, logvar = model(x_batch)
             else:
                 # Discriminator - Split batch into two halves for adversarial training
@@ -141,7 +142,7 @@ def train_model(cfg: DictConfig):
                 model.t += 1
 
             # VAE loss
-            if model.adv is None or not model.adv:
+            if not use_adv:
                 # L = recon_loss + kld_loss
                 total_loss, recon_loss, kld_loss, _ = model.loss_function(recon, x_batch, mu, logvar)
             else:
@@ -165,14 +166,12 @@ def train_model(cfg: DictConfig):
                 "epoch":              epoch + 1,
                 "batch_loss":         total_loss.item(),
                 "reconstruction_loss": recon_loss.item(),
-                "kl_divergence":       kld_loss.item(),
-                "adv_feature_loss":    feat_loss.item()
+                "kl_divergence":       kld_loss.item()
             }
 
             # Log gamma values if applicable
-            if model.adv is None or not model.adv:
-                pass
-            else:
+            if use_adv:
+                log_dict["adv_feature_loss"] = feat_loss.item()
                 log_dict["batch_disc_loss"] = d_loss.item()
                 gamma_dict = {f"gamma/layer_{i}": float(g) for i, g in enumerate(model.gamma_values)}
                 log_dict.update(gamma_dict)
