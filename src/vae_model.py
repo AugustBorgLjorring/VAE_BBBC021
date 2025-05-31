@@ -91,13 +91,17 @@ class VAESmall(VAEMedium):
             nn.LeakyReLU(0.01),
             nn.Conv2d(16, 16, kernel_size=5, stride=2, padding=2),          # 17x17 -> 9x9
             nn.LeakyReLU(0.01),
+            nn.Conv2d(16, 16, kernel_size=5, stride=2, padding=2),          # 9x9 -> 5x5
+            nn.LeakyReLU(0.01),
             nn.Flatten()
         )
-        self.fc_mu = nn.Linear(16 * 9 * 9, latent_dim)
-        self.fc_logvar = nn.Linear(16 * 9 * 9, latent_dim)
-        self.decoder_input = nn.Linear(latent_dim, 16 * 9 * 9)
+        self.fc_mu = nn.Linear(16 * 5 * 5, latent_dim)
+        self.fc_logvar = nn.Linear(16 * 5 * 5, latent_dim)
+        self.decoder_input = nn.Linear(latent_dim, 16 * 5 * 5)
         self.decoder = nn.Sequential(
-            nn.Unflatten(1, (16, 9, 9)),
+            nn.Unflatten(1, (16, 5, 5)),
+            nn.ConvTranspose2d(16, 16, kernel_size=5, stride=2, padding=2, output_padding=0), # 5x5 -> 9x9
+            nn.LeakyReLU(0.01),
             nn.ConvTranspose2d(16, 16, kernel_size=5, stride=2, padding=2, output_padding=0), # 9x9 -> 17x17
             nn.LeakyReLU(0.01),
             nn.ConvTranspose2d(16, 16, kernel_size=5, stride=2, padding=2, output_padding=1), # 17x17 -> 34x34
