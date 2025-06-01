@@ -77,18 +77,7 @@ class RandomEightWay:
         return img
 
 
-def load_data_by_well(cfg: DictConfig, split: str = 'train', seed: int = 1) -> DataLoader:
-    """
-    Splits wells by compound:
-      1) Seed val/test/train with one well per compound
-      2) Randomly fill val/test until their targets (cfg.data.val_ratio/test_ratio)
-      3) Rest of wells → train
-    """
-    # reproducibility
-    # 1) Build dataset & transform
-    transform = transforms.Compose([RandomEightWay()]) if split == "train" else None
-    dataset = BBBC021Dataset(cfg.data.train_path, transform=transform)
-
+def seeded_split_wells(cfg: DictConfig, dataset: Dataset, split: str = 'train', seed: int = 1):
     # 2) Read metadata: well → compound
     wells_meta, compounds_meta = _get_wells_and_compounds(cfg)
 
@@ -153,8 +142,27 @@ def load_data_by_well(cfg: DictConfig, split: str = 'train', seed: int = 1) -> D
     print(f"Total wells Train: {len(split_wells['train'])}, Val: {len(split_wells['val'])}, Test: {len(split_wells['test'])}")
     print(f"Total images in {split}: {len(indices)} ({len(indices) / len(dataset):.2%} of total)")
 
-    # 8) Return DataLoader
-    subset = Subset(dataset, indices)
+    return indices
+
+
+def load_data_by_well(cfg: DictConfig, split: str = 'train', seed: int = 1) -> DataLoader:
+    """
+    Splits wells by compound:
+      1) Seed val/test/train with one well per compound
+      2) Randomly fill val/test until their targets (cfg.data.val_ratio/test_ratio)
+      3) Rest of wells → train
+    """
+    # Build dataset & transform
+    transform = transforms.Compose([RandomEightWay()]) if split == "train" else None
+    dataset = BBBC021Dataset(cfg.data.train_path, transform=transform)
+
+    if split != 'all':
+        indices = seeded_split_wells(cfg, dataset, split, seed)
+        subset = Subset(dataset, indices)
+    else:
+        subset = dataset
+
+    # Return DataLoader
     return DataLoader(
         subset,
         batch_size=cfg.train.batch_size,
