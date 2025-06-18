@@ -38,12 +38,12 @@ class VAEMedium(nn.Module):
     def encode(self, x):
         h = self.encoder(x)    # (B, 32*5*5)
         mu     = self.fc_mu(h) # (B, latent_dim)
-        logvar = torch.clamp(self.fc_logvar(h), -6.0, 3.0) # (B, latent_dim)
+        logvar = torch.clamp(self.fc_logvar(h), -6.0, 5.0) # (B, latent_dim)
         return mu, logvar
 
     # Reparameterization trick
     def reparameterize(self, mu, log_var):
-        std = torch.exp(0.5 * log_var)
+        std = (0.5 * log_var).exp()
         eps = torch.randn_like(std)
         return mu + eps * std
 
@@ -66,7 +66,7 @@ class VAEMedium(nn.Module):
         recon_loss = (mse_term + const).mean()   # mean over batch (B,) + scaler -> (B,) + (B,) -mean-> scalar
 
         # KL divergence between q(z|x) and N(0, I)
-        kl_per_sample = - 0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp(), dim=1) # sum over latent dim (B, D) -sum-> (B,)
+        kl_per_sample = 0.5 * torch.sum(mu.pow(2) + logvar.exp() - 1 - logvar, dim=1) # sum over latent dim (B, D) -sum-> (B,)
         kl_loss = kl_per_sample.mean() # mean over batch (B,) -mean-> scalar
 
         total_loss = recon_loss + kl_loss
@@ -91,13 +91,17 @@ class VAESmall(VAEMedium):
             nn.LeakyReLU(0.01),
             nn.Conv2d(16, 16, kernel_size=5, stride=2, padding=2),          # 17x17 -> 9x9
             nn.LeakyReLU(0.01),
+            nn.Conv2d(16, 16, kernel_size=5, stride=2, padding=2), # 9x9 -> 5x5
+            nn.LeakyReLU(0.01),
             nn.Flatten()
         )
-        self.fc_mu = nn.Linear(16 * 9 * 9, latent_dim)
-        self.fc_logvar = nn.Linear(16 * 9 * 9, latent_dim)
-        self.decoder_input = nn.Linear(latent_dim, 16 * 9 * 9)
+        self.fc_mu = nn.Linear(16 * 5 * 5, latent_dim)
+        self.fc_logvar = nn.Linear(16 * 5 * 5, latent_dim)
+        self.decoder_input = nn.Linear(latent_dim, 16 * 5 * 5)
         self.decoder = nn.Sequential(
-            nn.Unflatten(1, (16, 9, 9)),
+            nn.Unflatten(1, (16, 5, 5)),
+            nn.ConvTranspose2d(16, 16, kernel_size=5, stride=2, padding=2, output_padding=0), # 5x5 -> 9x9
+            nn.LeakyReLU(0.01),
             nn.ConvTranspose2d(16, 16, kernel_size=5, stride=2, padding=2, output_padding=0), # 9x9 -> 17x17
             nn.LeakyReLU(0.01),
             nn.ConvTranspose2d(16, 16, kernel_size=5, stride=2, padding=2, output_padding=1), # 17x17 -> 34x34
@@ -135,7 +139,7 @@ class VAELarge(VAEMedium):
             nn.Sigmoid()
         )
 
-class BetaVAE(VAEMedium):
+class BetaVAE(VAELarge):
     def __init__(self, in_channels=3, latent_dim=256, beta=1.0):
         super().__init__(in_channels, latent_dim)
         self.beta = beta
