@@ -91,11 +91,7 @@ class VAESmall(VAEMedium):
             nn.LeakyReLU(0.01),
             nn.Conv2d(16, 16, kernel_size=5, stride=2, padding=2),          # 17x17 -> 9x9
             nn.LeakyReLU(0.01),
-<<<<<<< HEAD
             nn.Conv2d(16, 16, kernel_size=5, stride=2, padding=2), # 9x9 -> 5x5
-=======
-            nn.Conv2d(16, 16, kernel_size=5, stride=2, padding=2),          # 9x9 -> 5x5
->>>>>>> 0840354e510e8608de331600eaefed6230f789e1
             nn.LeakyReLU(0.01),
             nn.Flatten()
         )
