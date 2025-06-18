@@ -5,7 +5,9 @@ from matplotlib.offsetbox import OffsetImage, AnnotationBbox
 import numpy as np
 from sklearn.manifold import TSNE
 from sklearn.neighbors import KDTree
-
+import h5py
+import pandas as pd
+from tqdm import tqdm
 
 def run_tsne(model, loader, viz, args):
     print(">> Computing t-SNE")
@@ -34,7 +36,7 @@ def run_tsne(model, loader, viz, args):
     viz.save(fig, f"tsne_{N}")
 
 
-def run_tsne_nn_grid(model, loader, viz, args, grid_size=70):
+def run_tsne_nn_grid(model, loader, viz, args, grid_size=50):
     """
     Fast "mosaic" version of the t-SNE NN grid with white grid lines.
     """
@@ -189,77 +191,121 @@ def run_tsne_nn_grid_orig(model, loader, viz, args, grid_size=70, border=2):
     plt.close()
 
 
-def run_tsne_labeled(model, loader, viz, args, index_file="label_index.npy", label_file="moa_labels_y.npy"):
-    """
-    Compute t-SNE on all test-set latents and color by class,
-    plotting each class separately so legend entries are exact.
-    """
 
-    print(">> Computing t-SNE on full test set")
+# Helper function for plotting
+def plot_tsne(coords, labels, class_names, viz, title_suffix, filename_suffix, exclude_dmso=False, max_points=10000):
+    # Determine which classes to include
+    filtered_classes = [name for name in class_names if not (exclude_dmso and name == "DMSO")]
+    cmap = plt.colormaps['tab20'].resampled(len(filtered_classes))
 
-    device = next(model.parameters()).device
-    class_names = np.load(index_file, allow_pickle=True)
-    labels      = np.load(label_file)    # shape (N_test,)
+    # Mask for selected classes
+    selected_mask = np.full(len(labels), True)
+    if exclude_dmso:
+        dmso_idx = class_names.index("DMSO")
+        selected_mask = (labels != dmso_idx)
 
-    # gather all test images into one tensor
-    xs = torch.cat([xb for xb,_ in loader], dim=0).to(device)
-    N_test = xs.size(0)
-
-    # encode all into latents mu(x)
-    model.eval()
-    with torch.no_grad():
-        mus = []
-        for b in torch.split(xs, 64):
-            mu_batch, _ = model.encode(b)
-            mus.append(mu_batch.cpu())
-        lat = torch.cat(mus, dim=0).numpy()
-
-    # run t-SNE
-    if not os.path.exists("tsne_coords.npy"):
-        coords = TSNE(n_components=2, random_state=0).fit_transform(lat)
-        # Save t-SNE coords for later use
-        np.save("tsne_coords.npy", coords)
-    else:
-        coords = np.load("tsne_coords.npy")
-
-    # prepare a discrete colormap
-    cmap = plt.colormaps['tab20'].resampled(len(class_names))
+    # Subsample if too many points
+    idx_all = np.where(selected_mask)[0]
+    if len(idx_all) > max_points:
+        idx_all = np.random.choice(idx_all, size=max_points, replace=False)
 
     fig, ax = plt.subplots(figsize=(8, 6))
-    for idx, name in enumerate(class_names):
-        mask = (labels == idx)
+
+    for i, class_name in enumerate(filtered_classes):
+        true_idx = class_names.index(class_name)
+        mask = (labels == true_idx) & np.isin(np.arange(len(labels)), idx_all)
+
         if not mask.any():
             continue
 
-        # choose alpha & size per class (e.g. class 0 more transparent)
-        alpha = 0.1 if idx == 0 else 1
-        size  = 2    if idx == 0 else 3
-        marker_type = 'x' if idx == 0 else 'o'
-        edgecolor = None if idx == 0 else 'none'
-
         ax.scatter(
             coords[mask, 0], coords[mask, 1],
-            c=[cmap(idx)],  # single-color list
-            alpha=alpha, s=size,
-            label=name,
-            marker=marker_type,
-            linewidths=0.5,
-            edgecolors=edgecolor
+            c=[cmap(i)],
+            alpha=1,
+            s=5,
+            label=class_name,
+            marker='o',
+            edgecolors='none'
         )
 
     ax.set_xlabel("t-SNE dim 1")
     ax.set_ylabel("t-SNE dim 2")
-    ax.set_title(f"t-SNE of {N_test} test samples, by class")
+    ax.set_title(f"t-SNE {title_suffix}")
     ax.grid(True, linestyle="--", alpha=0.3)
 
-    # automatic legend: entries appear in the same order as you scatter them
     ax.legend(
         title="MOA classes",
         bbox_to_anchor=(1.05, 1),
         loc="upper left",
         fontsize="small",
         title_fontsize="small",
-        markerscale=2  # make legend markers a bit larger
+        markerscale=2
     )
 
-    viz.save(fig, f"tsne_labeled_{N_test}")
+    viz.save(fig, f"tsne_labeled_{filename_suffix}")
+
+
+
+
+
+def run_tsne_labeled(model, loader, viz, args):
+    """
+    Compute t-SNE on test-set latents and color by MOA class,
+    plotting each class separately for a clean legend.
+    """
+
+    print(">> Computing t-SNE on test set")
+
+    # Step 1: Load test split
+    subset_indices = loader.dataset.indices
+
+    cfg = model.cfg
+
+    # Load metadata and subset it to test set
+    with h5py.File(cfg.data.metadata_path, 'r') as f:
+        wells = f["metadata_well"][:].astype(str)
+        compounds = f["metadata_compound"][:].astype(str)
+        concentrations = f["metadata_concentration"][:].astype(str)
+        moas = f["metadata_moa"][:].astype(str)
+
+    meta_df = pd.DataFrame({
+        "well": wells,
+        "compound": compounds,
+        "concentration": concentrations,
+        "moa": moas
+    })
+    meta_df = meta_df.iloc[subset_indices].reset_index(drop=True)
+
+    # Encode all test images
+    device = next(model.parameters()).device
+    model.eval()
+
+    print(">> Encoding images into latent space")
+    embeddings = []
+    with torch.no_grad():
+        for x_batch, _ in tqdm(loader, desc="Computing embeddings"):
+            x_batch = x_batch.to(device)
+            mu, _ = model.encode(x_batch)  # Get mu only if you're using deterministic mean
+
+            embeddings.append(mu.cpu().numpy())
+
+    embeddings = np.concatenate(embeddings, axis=0)
+
+    # Get class names and label indices
+    class_names = sorted(meta_df["moa"].unique())
+    label_map = {moa: i for i, moa in enumerate(class_names)}
+    labels = np.array([label_map[moa] for moa in meta_df["moa"]])
+
+    # Step 2: Compute or load t-SNE
+    print(">> Computing t-SNE coordinates")
+    if not os.path.exists("tsne_coords.npy"):
+        coords = TSNE(n_components=2, init='pca', perplexity=30, random_state=0).fit_transform(embeddings)
+        np.save("tsne_coords.npy", coords)
+    else:
+        coords = np.load("tsne_coords.npy")
+
+    # Plot with DMSO included
+    plot_tsne(coords, labels, class_names, viz, title_suffix="(with DMSO)", filename_suffix="with_dmso")
+
+    # Plot with DMSO excluded
+    plot_tsne(coords, labels, class_names, viz, title_suffix="(no DMSO)", filename_suffix="no_dmso", exclude_dmso=True)

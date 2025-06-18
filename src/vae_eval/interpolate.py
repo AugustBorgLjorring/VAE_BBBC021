@@ -53,12 +53,24 @@ def run_interpolate_seq(model, loader, viz, i1, i2, steps):
 # Visualize linear interpolation between two images in latent space of a VAE model
 # This function generates a grid of images showing the linear interpolation
 # between two selected images by varying the latent representation.
-def run_interpolate_lin(model, loader, viz, args, steps = 20):
+def run_interpolate_lin(model, loader, viz, args, steps = 10):
     print(">> Linear interpolation")
     i1, i2 = args.interp_idx
 
-    x, _ = next(iter(loader))
-    img1, img2 = x[i1:i1+1], x[i2:i2+1]
+    # x, _ = next(iter(loader))
+    # img1, img2 = x[i1:i1+1], x[i2:i2+1]
+    dmso_idx = 8428 + i1
+    cytochalasinD_idx = 11146 + i2
+    simvastatin_idx = 402 + i2
+    nocodazole_idx = 18940 + i2
+
+    img1 = loader.dataset[dmso_idx][0].unsqueeze(0)  # (1, C, H, W)
+    img2 = loader.dataset[nocodazole_idx][0].unsqueeze(0)  # (1, C, H, W)
+
+    i1name = "DMSO"
+    # i2name = r"Cytochalasin D (1$\mu M$)"
+    # i2name = r"Simvastatin (6$\mu M$)"
+    i2name = r"Nocodazole (1$\mu M$)"
 
     with torch.no_grad():
         mu1, _ = model.encode(img1)
@@ -68,8 +80,8 @@ def run_interpolate_lin(model, loader, viz, args, steps = 20):
         frames = model.decode(latent)
         alphas = a.squeeze(1)
         
-    cols = steps // 2 if steps % 2 == 0 else steps
-    fig, axes = plt.subplots(2, cols, figsize=(cols * 2, 4), constrained_layout=True)
+    cols = 10
+    fig, axes = plt.subplots(1, cols, figsize=(cols * 1.5, 2), constrained_layout=True)
     flat_axes = axes.flatten()
     
     # Set the first and last images to be the original images
@@ -79,16 +91,17 @@ def run_interpolate_lin(model, loader, viz, args, steps = 20):
         ax.set_xticks([]); ax.set_yticks([])
         for spine in ax.spines.values():
             spine.set_edgecolor("black"); spine.set_linewidth(1)
-        ax.set_xlabel(rf"$\alpha={alphas[idx]:.3f}$", fontsize=10, labelpad=4)
+        ax.set_xlabel(rf"$\alpha={alphas[idx]:.3f}$", fontsize=14, labelpad=4)
     
     # Set the first and last images with special colors
-    for special, color in [(0, 'green'), (steps - 1, 'red')]:
+    for special, color in [(0, 'blue'), (steps - 1, 'red')]:
         ax = flat_axes[special]
         for spine in ax.spines.values():
-            spine.set_edgecolor(color); spine.set_linewidth(2)
-        img_idx = i1 if special == 0 else i2
+            spine.set_edgecolor(color); spine.set_linewidth(4)
+        img_idx = i1name if special == 0 else i2name
         alpha = alphas[special]
-        ax.set_xlabel(rf"Image {img_idx} | $\alpha={alpha:.3f}$", fontsize=10, labelpad=4)
+        ax.set_title(f"{img_idx}", fontsize=14, color="black")
+        ax.set_xlabel(rf"$\alpha={alpha:.3f}$", fontsize=14, labelpad=4)
         
-    fig.suptitle(f"Linear interpolation: Image {i1} -> {i2}", fontsize=12, y=1.05)
-    viz.save(fig, f"interp_lin_{i1}_to_{i2}")
+    fig.suptitle(f"Linear interpolation: {i1name} to {i2name}", fontsize=16, y=1)
+    viz.save(fig, f"interp_lin_{i1name}_to_{i2name[:-11]}")

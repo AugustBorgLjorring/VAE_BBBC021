@@ -3,6 +3,9 @@ import torch
 import numpy as np
 from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
+from tqdm import tqdm
+import h5py
+import pandas as pd
 
 def run_pca_grid(model, loader, viz, args, grid_size=70):
     """
@@ -60,7 +63,7 @@ def run_pca_grid(model, loader, viz, args, grid_size=70):
     viz.save(fig, f"pca_grid_full_{grid_size}")
 
 
-def run_pca_nn_grid(model, loader, viz, args, grid_size=70, border=2):
+def run_pca_nn_grid(model, loader, viz, args, grid_size=100, border=2):
     """
     Fast mosaic version of the PCA NN grid with white borders.
       1) Encode all test latents mu(x)
@@ -232,3 +235,113 @@ def run_pca_nn_grid_orig(model, loader, viz, args, grid_size=70, border=2):
     plt.title(f"PCA NN mosaic grid (orig, G={G})", fontsize=150, loc='center', pad=5)
     plt.tight_layout(pad=0)
     viz.save(plt.gcf(), f"pca_nn_mosaic_orig_{G}_bordered", dpi=dpi)
+
+
+
+
+def plot_pca(coords, labels, class_names, viz, title_suffix, filename_suffix, exclude_dmso=False, max_points=10000):
+    filtered_classes = [name for name in class_names if not (exclude_dmso and name == "DMSO")]
+    cmap = plt.colormaps['tab20'].resampled(len(filtered_classes))
+
+    selected_mask = np.full(len(labels), True)
+    if exclude_dmso:
+        dmso_idx = class_names.index("DMSO")
+        selected_mask = (labels != dmso_idx)
+
+    idx_all = np.where(selected_mask)[0]
+    if len(idx_all) > max_points:
+        idx_all = np.random.choice(idx_all, size=max_points, replace=False)
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+
+    for i, class_name in enumerate(filtered_classes):
+        true_idx = class_names.index(class_name)
+        mask = (labels == true_idx) & np.isin(np.arange(len(labels)), idx_all)
+
+        if not mask.any():
+            continue
+
+        ax.scatter(
+            coords[mask, 0], coords[mask, 1],
+            c=[cmap(i)],
+            alpha=1,
+            s=5,
+            label=class_name,
+            marker='o',
+            edgecolors='none'
+        )
+
+    ax.set_xlabel("PC 1")
+    ax.set_ylabel("PC 2")
+    ax.set_title(f"PCA {title_suffix}")
+    ax.grid(True, linestyle="--", alpha=0.3)
+
+    ax.legend(
+        title="MOA classes",
+        bbox_to_anchor=(1.05, 1),
+        loc="upper left",
+        fontsize="small",
+        title_fontsize="small",
+        markerscale=2
+    )
+
+    viz.save(fig, f"pca_labeled_{filename_suffix}")
+
+
+
+def run_pca_labeled(model, loader, viz, args):
+    """
+    Compute PCA on test-set latents and color by MOA class,
+    with and without DMSO shown.
+    """
+
+    print(">> Computing PCA on test set")
+
+    # Step 1: Load metadata
+    subset_indices = loader.dataset.indices
+    cfg = model.cfg
+
+    with h5py.File(cfg.data.metadata_path, 'r') as f:
+        wells = f["metadata_well"][:].astype(str)
+        compounds = f["metadata_compound"][:].astype(str)
+        concentrations = f["metadata_concentration"][:].astype(str)
+        moas = f["metadata_moa"][:].astype(str)
+
+    meta_df = pd.DataFrame({
+        "well": wells,
+        "compound": compounds,
+        "concentration": concentrations,
+        "moa": moas
+    })
+    meta_df = meta_df.iloc[subset_indices].reset_index(drop=True)
+
+    # Step 2: Encode
+    device = next(model.parameters()).device
+    model.eval()
+    print(">> Encoding images into latent space")
+    embeddings = []
+
+    with torch.no_grad():
+        for x_batch, _ in tqdm(loader, desc="Computing embeddings"):
+            x_batch = x_batch.to(device)
+            mu, _ = model.encode(x_batch)
+            embeddings.append(mu.cpu().numpy())
+
+    embeddings = np.concatenate(embeddings, axis=0)
+
+    # Step 3: Label mapping
+    class_names = sorted(meta_df["moa"].unique())
+    label_map = {moa: i for i, moa in enumerate(class_names)}
+    labels = np.array([label_map[moa] for moa in meta_df["moa"]])
+
+    # Step 4: PCA
+    print(">> Computing PCA coordinates")
+    if not os.path.exists("pca_coords.npy"):
+        coords = PCA(n_components=2).fit_transform(embeddings)
+        np.save("pca_coords.npy", coords)
+    else:
+        coords = np.load("pca_coords.npy")
+
+    # Plot with and without DMSO
+    plot_pca(coords, labels, class_names, viz, title_suffix="(with DMSO)", filename_suffix="with_dmso")
+    plot_pca(coords, labels, class_names, viz, title_suffix="(no DMSO)", filename_suffix="no_dmso", exclude_dmso=True)
