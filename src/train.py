@@ -94,6 +94,8 @@ def train_model(cfg: DictConfig):
     # Initialize model with configuration
     model = initialize_model(cfg, device)
 
+    print(model)
+
     vae_params = (
         list(model.encoder.parameters()) +
         list(model.fc_mu.parameters()) + 
