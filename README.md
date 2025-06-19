@@ -22,9 +22,9 @@ The dataset is derived from [BBBC021](https://bbbc.broadinstitute.org/BBBC021), 
 * Fluorescence microscopy images of MCF-7 breast cancer cells
 * Each single-cell image is 68×68 pixels with 3 channels:
 
-  * **Red (DAPI)** – nucleus
-  * **Blue (Tubulin)** – microtubules
-  * **Green (Actin)** – actin filaments
+  * **Red (DAPI)** - nucleus
+  * **Blue (Tubulin)** - microtubules
+  * **Green (Actin)** - actin filaments
 * Annotated by **compound**, **concentration**, and **Mechanism of Action (MoA)**
 
 ---
@@ -69,8 +69,8 @@ Configuration is handled using [Hydra](https://hydra.cc/), and experiment tracki
 
 ## 👥 Authors
 
-* August Borg Ljørring – s224178
-* August Emil Holm Jørgensen – s224166
+* August Borg Ljørring - s224178
+* August Emil Holm Jørgensen - s224166
 
 📍 *Technical University of Denmark (DTU)*
 
