@@ -71,7 +71,8 @@ Configuration is handled using [Hydra](https://hydra.cc/), and experiment tracki
 
 * August Borg Ljørring – s224178
 * August Emil Holm Jørgensen – s224166
-  📍 *Technical University of Denmark (DTU)*
+
+📍 *Technical University of Denmark (DTU)*
 
 ---
 
