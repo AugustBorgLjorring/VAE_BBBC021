@@ -2,6 +2,9 @@
 
 This repository contains code for training and evaluating **Variational Autoencoders (VAEs)** on the **BBBC021** single-cell microscopy dataset. The goal is to learn interpretable latent representations of cell morphology through unsupervised generative modeling.
 
+<p align="center">
+  <img src="latent_traversal.png" alt="Latent traversal" />
+</p>
 ---
 
 ## 🧬 Project Overview
